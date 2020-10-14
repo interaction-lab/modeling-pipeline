@@ -12,52 +12,9 @@ We don't believe in reinventing the wheel and you shouldn't have to either. This
 ## Getting Started
 
 We recommend you use a virtual environment such as conda for managing dependencies. We recommend use of python==3.5+
- - install all dependencies with 
-`pip install -r requirements.txt`
+ - install all dependencies with:
 
-Here is a helpful video for [installing opensmile](https://www.youtube.com/watch?v=y8jDv1dW06Q&ab_channel=HowTo)
-
-## Data Story (Chain of Custody)
-
-[X] Review Synch of Audio and Video and Crop Videos to Appropriate Length
-- Take a look at videos with waveforms in OpenShot Video Editor
-  - Crop start and end of videos
-  - Synch waveform with video
-  - Save seperate and joint video/audio
-
-[X] We start with the raw original data:
-- Videos
-- ROS Bags (Depth Recordings)
-- User Annotations
-- Surveys
-
-[X] We then generate the processed data, using tools such as openface, openpose, google stt and librosa
-- raw utterances (voice_activity.py)
-- raw face
-- raw pose
-- raw transcripts
-- raw audio features
-
-[X] We then process these data into useful features
-- speaker (label_speakers.py, fix_speakers.py, then merge_speakers.py)
-- face
-- ~~pose~~
-- clean transcripts (See Annotation Templates)
-- audio features (Pitch and Power)
-
-[X] We then annotate for additional information
-- Annotation
-    - Speaker
-    - Adressee
-    - Share Type & Quality
-
-[  ] We inspect and analyze our data and features
-- See multi-party-analysis
-
-[  ] We generate features files for use with our models
-- generate HDF5 files
-- See multi-party-modeling for where this story continues
-
+        `pip install -r requirements.txt`
 
 
 # Script Organization
@@ -93,7 +50,7 @@ Helpful examples for recording data during experiments for later use.
 
  - Cleaning OpenFace
  - Converting OpenPose to CSV
- - Windowing Features [ToDo]
+ - Windowing Features [In-Progress]
  - Converting Annotations to Labels [ToDo]
 
 ### 2.3 Feature Importance
@@ -108,7 +65,7 @@ Helpful examples for recording data during experiments for later use.
 
 ## 4. Modeling
 
- - Data Loading
+ - Data Loading [In-Progress]
  - Model Definition
  - Training Scripts
  - Hyperparameter Sweeps
@@ -120,3 +77,11 @@ Helpful examples for recording data during experiments for later use.
 ## 6. Production
 
 [ToDo] Using Models in the real world
+
+
+# Additional Information
+
+Here is a helpful video for [installing opensmile](https://www.youtube.com/watch?v=y8jDv1dW06Q&ab_channel=HowTo)
+
+
+
