@@ -80,31 +80,20 @@ def objective(trial):
             "epochs": 200,  # trial.suggest_int("epochs", 5, 35),
             "kern_size": trial.suggest_int("kern_size", 2, 7),
         }
+
     model_params["model"] = model
-    model_params["num_features"] = 89
-    model_params["patience"] = 15
-    model_params["target_names"] = [
-        # "silent",
-        "talking",
-        # "about_to_talk",
-        "almost_finished",
-    ]
+    model_params["num_features"] = 201
+    model_params["patience"] = 2
+    model_params["target_names"] = params["classes"]
     model_params["num_classes"] = len(model_params["target_names"])
+
     try:
         start = time.time()
-        dataset = MyDataset(
-            df,
-            window=model_params["window"],
-            pad_out=True,
-            num_labels=model_params["num_classes"],
-            continuous_labels=False,
-            labels_at_end=True,
-            augment=True,
-        )
-        print(f"dataset loaded with sessions: {params['sessions']}")
-        print(f"Dataset loaded in {(time.time()-start)/60} min")
+        dataset = MyDataset(df, window=model_params["window"], labels=params["classes"])
+
         trainer = ModelTraining(model_params, dataset, trial, verbose=True)
         auc_roc = trainer.train_and_eval_model()
+
         print(f"Round completed in {(time.time()-start)/60} min")
         return auc_roc
     except ValueError as E:
@@ -113,34 +102,25 @@ def objective(trial):
         return 0
 
 
-####################
-start = time.time()
-dl = DataLoading()
-
-neptune.init("cmbirmingham/turn-taking-sandbox2")
-
-
+data_loader = DataLoading()
+neptune.init("cmbirmingham/Update-Turn-Taking")
 neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
-print(f"Neptune loaded in {(time.time()-start)/60} min")
 
 ####################
-start = time.time()
+# All models ["rnn", "lstm", "gru", "mlp", "forest", "tree", "tcn", "knn", "xgb"]
+
 # PARAMETERS TO MESS WITH
-params = {"trials": 35, "sessions": (1, 6)}
-class_weights = [1, 2]
-df = dl.get_one_person_talking_dataset(sessions=params["sessions"], hard=True)
-print(f"Dataframe loaded in {(time.time()-start)/60} min")
+name = "first_attempt"
+params = {"classes": ["speaking"]}
+class_weights = [1]
+num_trials = 5
+models_to_try = ["tcn"]
 
 
-name = "gru_exploration"
-trials = params["trials"]
+df = data_loader.get_all_sessions()
 
-# for model in ["rnn", "lstm", "gru", "mlp", "forest", "tree", "tcn", "knn"]:
-# for model in ["xgb", "tcn", "mlp", "forest", "tree", "gru"]:
-# for model in ["tcn", "xgb", "mlp", "forest", "tree", "gru"]:
-for model in ["gru"]:
+for model in models_to_try:
     ####################
-    start = time.time()
     print(f"creating {model} study")
     neptune.create_experiment(
         name="{}_{}".format(model, name),
@@ -150,17 +130,16 @@ for model in ["gru"]:
             "model_training.py",
             "model_defs.py",
             "data_utils.py",
+            "data_loader_config.yml",
         ],
     )
     folder_location = "./studies/study_{}_{}.pkl".format(model, name)
     neptune.append_tag(model)
-    neptune.append_tag("five sessions")
-    neptune.append_tag("augmented")
-    neptune.append_tag("concise")
+    neptune.append_tag("all sessions")
+    neptune.append_tag("Not Normalized")
 
     study = optuna.create_study(direction="maximize", pruner=optuna.pruners.NopPruner())
-    print(f"Study created in {(time.time()-start)/60} min")
 
-    study.optimize(objective, n_trials=trials, callbacks=[neptune_callback])
+    study.optimize(objective, n_trials=num_trials, callbacks=[neptune_callback])
 
     neptune.stop()

@@ -4,3 +4,8 @@ matplotlib
 pandas
 webrtcvad
 ffpyplayer
+feather-format 
+swifter
+seaborn
+neptune-client
+neptune-contrib

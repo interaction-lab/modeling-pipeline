@@ -40,39 +40,40 @@ Helpful examples for recording data during experiments for later use.
 
 ### 2.1 Feature Extraction
 
- - OpenFace
- - OpenSMILE
- - Librosa
- - Voice Activity (To json for annotation)
- - OpenPose [ToDo]
+ - [OpenFace](https://github.com/TadasBaltrusaitis/OpenFace)
+ - [OpenSMILE](https://www.audeering.com/opensmile/)
+ - [Librosa](https://librosa.org/doc/latest/index.html)
+ - [Voice Activity](https://github.com/wiseman/py-webrtcvad) (To json for annotation)
+ - [OpenPose](https://github.com/CMU-Perceptual-Computing-Lab/openpose) [ToDo]
 
-### 2.2 Feature Conversion
+### 2.2 Feature Conversion (Data Cleaning)
 
  - Cleaning OpenFace
  - Converting OpenPose to CSV
+ - [Normalizing Features](https://towardsai.net/p/data-science/how-when-and-why-should-you-normalize-standardize-rescale-your-data-3f083def38ff)
  - Windowing Features [In-Progress]
- - Converting Annotations to Labels [ToDo]
 
 ### 2.3 Feature Importance
 
-[ToDo] Methods for picking features to reduce correlation and redundancy
+[ToDo] Methods for picking features to reduce correlation and redundancy ###############
 
 ## 3. Annotation
 
  - Python Based Annotation
  - Prodigy [ToDo]
  - Inter-Rater Reliability Calculation [ToDo]
+ - Converting Annotations to Labels [ToDo] ###################
 
 ## 4. Modeling
 
  - Data Loading [In-Progress]
  - Model Definition
- - Training Scripts
+ - Training Scripts [In-Progress]
  - Hyperparameter Sweeps
 
 ## 5. Analysis
 
-[ToDo] Visualizing and analyzing results
+[ToDo] Visualizing and analyzing results  #################
 
 ## 6. Production
 
@@ -84,4 +85,8 @@ Helpful examples for recording data during experiments for later use.
 Here is a helpful video for [installing opensmile](https://www.youtube.com/watch?v=y8jDv1dW06Q&ab_channel=HowTo)
 
 
+# TODO
 
+- See [ToDo] tags above
+- Freeze versions in requirements.txt and add Conda setup
+- Improve citation

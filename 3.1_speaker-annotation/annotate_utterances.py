@@ -4,11 +4,12 @@ import os
 import json
 
 
-class PythonAnnotator:
+class PythonTurnAnnotator:
     def __init__(self, args):
         self.args = args
         with open(args.input) as f:
-            # See voice_activity.py for expexted json structure
+            # See 2.1_feature-extraction/voice_activity.py for
+            # expexted json structure
             self.utterances = json.load(f)["utterances"]
         self.video_path = args.video
         # for keypad input
@@ -400,7 +401,7 @@ if __name__ == "__main__":
     parser.add_argument("output", help="path to output json")
     parser.add_argument("steps", help="steps to be completed [01234]")
     args = parser.parse_args()
-    PA = PythonAnnotator(args)
+    PA = PythonTurnAnnotator(args)
 
     if "0" in args.steps:
         PA.fill_labels()

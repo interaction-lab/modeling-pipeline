@@ -2,8 +2,8 @@
 *.hdf
 *.h5
 *.feather
-
-
+*.csv
+*.pkl
 
 
 # Created by https://www.toptal.com/developers/gitignore/api/python,pycharm,vscode,jupyternotebooks

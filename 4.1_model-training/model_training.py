@@ -30,6 +30,8 @@ import neptune
 from neptunecontrib.api import log_table
 import matplotlib.pyplot as plt
 import sys
+from tqdm import tqdm
+import pprint
 
 if not sys.warnoptions:
     import warnings
@@ -37,6 +39,10 @@ if not sys.warnoptions:
     warnings.simplefilter("ignore")
 
 sns.set()
+
+# Needed to reproduce
+torch.manual_seed(0)
+np.random.seed(0)
 
 print(torch.cuda.is_available())
 dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -74,7 +80,7 @@ class EarlyStopping(object):
             self.num_bad_epochs += 1
 
         if self.num_bad_epochs >= self.patience:
-            print(f" {self.name} lost patience")
+            print(f"{self.name} lost patience")
             return True
 
         return False
@@ -176,6 +182,8 @@ class ModelTraining:
                 hidden_layer_sizes=hidden_layer_sizes,
             )
 
+        self.metrics = {"train": [], "val": [], "test": []}
+
     def train_and_eval_model(self):
 
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
@@ -199,124 +207,91 @@ class ModelTraining:
         return auc_roc
 
     def fit_torch_nn(self):
-        val_report = []
-        train_report = []
-        test_report = []
         es_los = EarlyStopping(
             "val_loss", patience=self.params["patience"], min_delta=0.005, mode="min"
         )
-        es_val_auc = EarlyStopping(
-            "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
-        )
+        # es_val_auc = EarlyStopping(
+        #     "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
+        # )
         stopping_backup = 0
 
-        for epoch in range(self.params["epochs"]):
+        for epoch in tqdm(range(self.params["epochs"])):
 
             # TRAINING
             self.model.train()
             self.dataset.status = "training"
-            (
-                (columns, train_metric_values),
-                train_wa_auROC,
-                train_wa_AP,
-                train_loss,
-            ) = self.run_epoch()
-            train_report.append(train_metric_values)
+            train_metric_values = self.run_epoch()
+            self.metrics["train"].append(train_metric_values)
+
+            loss_index = self.columns.index("Loss")
+            print(self.columns)
 
             # EVALUATION
             self.model.eval()
             self.dataset.status = "validation"
             with torch.no_grad():
-                (
-                    (columns, val_metric_values),
-                    val_wa_auROC,
-                    val_wa_AP,
-                    val_loss,
-                ) = self.run_epoch()
-                val_report.append(val_metric_values)
+                val_metric_values = self.run_epoch()
+                self.metrics["val"].append(val_metric_values)
 
             if self.trial:
-                self.trial.report(val_wa_auROC, step=epoch)
-                stop_on_loss = es_los.step(val_loss)
-                stop_on_auc = es_val_auc.step(val_wa_auROC)
-                if stop_on_auc or stop_on_loss:
-                    stopping_backup += 1
-                else:
-                    stopping_backup = 0
+                self.trial.report(self.metrics["val"][-1][0], step=epoch)
+                stop_loss = es_los.step(self.metrics["val"][-1][loss_index])
+                # stop_auc = es_val_auc.step(self.metrics["val"][-1][loss_index])
+                # if stop_auc or stop_loss:
+                #     patience += 1
+                # else:
+                #     patience = 0
 
-                if (stop_on_loss and stop_on_auc) or (
-                    stopping_backup > 2 * self.params["patience"]
+                if (
+                    stop_loss
+                    # (stop_loss and stop_auc)
+                    # or (patience > 2 * self.params["patience"])
+                    or epoch == self.params["epochs"] - 1
                 ):
-                    # TESTING
+                    # TESTING AT THE END
                     self.model.eval()
                     self.dataset.status = "testing"
                     with torch.no_grad():
-                        (
-                            (columns, test_metric_values),
-                            test_wa_auROC,
-                            test_wa_AP,
-                            total_loss,
-                        ) = self.run_epoch()
-                        test_report = [test_metric_values]
-                        reports = {
-                            "train": train_report[-1],
-                            "val": val_report[-1],
-                            "test": test_report[-1],
-                        }
+                        test_metric_values = self.run_epoch()
+                        self.metrics["test"] = [test_metric_values]
+                        self.log_reports()
+                    return self.metrics["test"][-1][0]
 
-                        self.log_reports(reports, columns)
-                    return test_wa_auROC
-
-            self.scheduler.step(val_loss)
-            if self.verbose:
-                print(
-                    f"Epoch {epoch+0:03} | Train: Loss-{train_loss:.2f} auROC-{train_wa_auROC:.4f} AP-{train_wa_AP:.4f} | Val: Loss-{val_loss:.4f} auROC-{val_wa_auROC:.4f} AP-{val_wa_AP:.4f}"
-                )
+            self.scheduler.step(self.metrics["val"][-1][0])
+            # if self.verbose:
+            # print(
+            #     f"Epoch {epoch+0:03} | Train: Loss-{train_loss:.2f} auROC-{train_wa_auROC:.4f} AP-{train_wa_AP:.4f} | Val: Loss-{val_loss:.4f} auROC-{val_wa_auROC:.4f} AP-{val_wa_AP:.4f}"
+            # )
 
         # TESTING
         self.model.eval()
         self.dataset.status = "testing"
         with torch.no_grad():
-            (
-                (columns, test_metric_values),
-                test_wa_auROC,
-                test_wa_AP,
-                total_loss,
-            ) = self.run_epoch()
-            test_report = [test_metric_values]
-            reports = {
-                "train": train_report[-1],
-                "val": val_report[-1],
-                "test": test_report[-1],
-            }
-
-            self.log_reports(reports, columns)
-        return test_wa_auROC
+            test_metric_values = self.run_epoch()
+            self.metrics["test"] = [test_metric_values]
+            self.log_reports()
+        return self.metrics["test"][-1][0]
 
     def run_epoch(self):
         total_loss = 0
         labels = []
         predictions = []
 
-        for xb, yb in self.data_loader:
+        for xb, yb in tqdm(self.data_loader):
             batch_loss, batch_predictions = self.run_batch(xb.to(dev), yb.to(dev))
             total_loss += batch_loss
 
             labels.append(yb.numpy())
             predictions.append(batch_predictions.cpu().detach().numpy())
+            # print(batch_loss)
 
         total_loss = total_loss / len(self.data_loader)
 
         predictions = np.vstack(predictions)
         labels = np.vstack(labels)
 
-        result, wa_auROC, wa_AP = self.eval_metrics(labels, predictions)
-        return (
-            self.split_results_to_list(result, wa_auROC, wa_AP),
-            wa_auROC,
-            wa_AP,
-            total_loss,
-        )
+        result = self.eval_metrics(labels, predictions)
+        return self.listify_metrics(result, total_loss)
 
     def run_batch(self, xb, yb):
         out = self.model(xb)
@@ -349,7 +324,7 @@ class ModelTraining:
 
     def test_fit(self, X_set, Y_set, set_name):
         Y_pred = self.model.predict(X_set)
-        report, wa_auROC, wa_AP = self.eval_metrics(Y_set, Y_pred, output_dict=True)
+        report = self.eval_metrics(Y_set, Y_pred, output_dict=True)
         neptune.send_metric(f"{set_name}_wa_auROC", wa_auROC)
         neptune.send_metric(f"{set_name}_wa_AP", wa_AP)
         for k, v in report.items():
@@ -362,72 +337,91 @@ class ModelTraining:
         y_test = [a.squeeze().tolist() for a in labels]
 
         # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
-        wa_auROC = roc_auc_score(y_test, y_pred_list, average="weighted")
-        wa_AP = average_precision_score(y_test, y_pred_list, average="weighted")
-
+        auROC = roc_auc_score(y_test, y_pred_list, average=None)  # average="weighted")
+        AP = average_precision_score(
+            y_test, y_pred_list, average=None
+        )  # average="weighted")
+        # print(y_test, y_pred_list, self.params["target_names"])
+        print(auROC, AP)
         report = classification_report(
             y_test,
             y_pred_list,
             output_dict=output_dict,
+            labels=[i for i in range(len(self.params["target_names"]))],
             target_names=self.params["target_names"],
         )
-        return report, wa_auROC, wa_AP
+        if type(AP) is list:
+            for i in range(len(self.params["target_names"])):
+                report[self.params["target_names"][i]]["auROC"] = auROC[i]
+                report[self.params["target_names"][i]]["AP"] = AP[i]
+        else:
+            report[self.params["target_names"][0]]["auROC"] = auROC
+            report[self.params["target_names"][0]]["AP"] = AP
+        pprint.pprint(report)
+        return report
 
-    def split_results_to_list(self, results, auROC, mAP):
-        columns = ["wa_auROC", "wa_AP"]
-        values = [auROC, mAP]
+    def listify_metrics(self, results, loss):
+        columns = ["Loss"]
+        values = [loss]
         for k, v in results.items():
             for k2, v2 in v.items():
                 columns.append(f"{k}-{k2}")
                 values.append(v2)
-        return columns, values
+        self.columns = columns
+        return values
 
-    def log_reports(self, reports_dict, columns):
-        for k, v in reports_dict.items():
-            for i in range(len(columns)):
-                neptune.send_metric(f"{k}_{columns[i]}", v[i])
+    def log_reports(self):
+        # Here is where we can get creative showing what we want
+        # self.metrics = {"train": [], "val": [], "test": []}
+        # self.columns
+
+        for k in ["train", "val", "test"]:
+            df = pd.DataFrame(self.metrics[k], columns=self.columns)
+            log_table(k, df)
+            metrics_to_log = [
+                "auROC",
+                "AP",
+                "support",
+                "precision",
+                "recall",
+                "f1-score",
+                "loss",
+            ]
+            for c in self.columns:
+                for m in metrics_to_log:
+                    if m in c:
+                        neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
 
 
 if __name__ == "__main__":
     data_loader = DataLoading()
     print("starting")
-    df = data_loader.get_one_person_talking_dataset(sessions=(1, 2), hard=True)
+    df = data_loader.get_all_sessions()
 
-    window = 6
-    data = MyDataset(
-        df,
-        window=window,
-        pad_out=True,
-        num_labels=4,
-        continuous_labels=False,
-        labels_at_end=True,
-        augment=True,
-    )
-    for s in ["training", "validation", "testing"]:
-        data.status = s
-        print(len(data))
+    window = 20
+    # classes = ["speaking", "finishing"]
+    classes = ["speaking"]
+    data = MyDataset(df, window=window, labels=classes)
 
-    totals = [0, 0, 0, 0]
-    for example in data.y_train:
-        for i in range(4):
-            totals[i] += example[i]
+    model = "tcn"
+    if model in ["tcn", "rnn", "gru", "lstm"]:
+        model_params = {
+            # TCN Params
+            "num_layers": 5,
+            "lr": 5e-6,
+            "batch_size": 30,
+            "window": window,
+            "dropout": 0.25,
+            "epochs": 200,
+            "kern_size": 5,
+        }
+    model_params["model"] = model
+    model_params["num_features"] = 201
+    model_params["patience"] = 15
+    model_params["class_weights"] = [1]
+    model_params["target_names"] = classes
+    model_params["num_classes"] = len(model_params["target_names"])
 
-    print(totals)
-    model_params = {
-        "model": "tcn",
-        "hidden": 5,
-        "batch_size": 21,
-        "window": window,
-        "dropout": 0.25,
-        "depth": 7,
-        "kern_size": 2,
-        #
-        "loss_func": torch.nn.BCEWithLogitsLoss(),
-        "lr": 0.01,
-        "epochs": 3,
-        "num_features": 89,
-        "num_classes": 4,
-        "target_names": ["silent", "talking", "about_to_talk", "almost_finished"],
-    }
     trainer = ModelTraining(model_params, data, verbose=True)
+
     auc_roc = trainer.train_and_eval_model()
