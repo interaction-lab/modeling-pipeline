@@ -149,18 +149,21 @@ class MyDataset(Dataset):
         labels=["speaking"],
     ):
         self.labels = df[labels]
-        # print(self.labels)
-        # print(self.labels.shape)
         self.df = df.drop(["index"], axis=1)
         self.df = df.drop(labels, axis=1)
-        # print(self.df)
-        # print(self.labels)
-        # print(f"Total frames: {len(self.df)}")
+        # self.normalize()
+
         self.window = window
         self.status = status
         self.overlap = overlap
 
         self.setup_dataset()
+
+    @timeit
+    def normalize(self):
+        print("Normalizing df columns")
+        for c in tqdm(self.df.columns):
+            self.df[c] = (self.df[c] - self.df[c].mean()) / self.df[c].std()
 
     @timeit
     def split(self, start=0, k=5):
@@ -179,10 +182,6 @@ class MyDataset(Dataset):
 
         self.train_list = list(flatten(folds))
 
-        # print(
-        #     f" Total examples {sum([len(self.train_list), len(self.val_list), len(self.test_list)])}"
-        # )
-
         return
 
     @timeit
@@ -199,7 +198,10 @@ class MyDataset(Dataset):
         # Fit scalar on train
         # self.scaler = StandardScaler()
 
-        # Augment
+        # Augment or find label balance
+        self.weights = []
+        for c in self.labels.columns:
+            self.weights.append(len(self.labels) / self.labels[c].sum())
         pass
 
     def get_dataset(self):
@@ -253,10 +255,12 @@ class MyDataset(Dataset):
 if __name__ == "__main__":
     data_loader = DataLoading()
     df = data_loader.get_all_sessions()
-    md = MyDataset(df, window=3, labels=["speaking"])
-    DL = DataLoader(md, batch_size=3)
-    for xb, yb in DL:
-        print(yb)
-        print(yb.shape)
-        input()
+    md = MyDataset(df, window=3, labels=["speaking", "finishing"])
+    md.normalize()
+    print(df.shape)
+    # DL = DataLoader(md, batch_size=3)
+    # for xb, yb in DL:
+    #     print(yb)
+    #     print(yb.shape)
+    #     input()
 

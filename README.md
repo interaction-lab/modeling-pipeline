@@ -62,14 +62,28 @@ Helpful examples for recording data during experiments for later use.
  - Python Based Annotation
  - Prodigy [ToDo]
  - Inter-Rater Reliability Calculation [ToDo]
- - Converting Annotations to Labels [ToDo] ###################
+ - Converting Annotations to Labels
 
 ## 4. Modeling
 
  - Data Loading [In-Progress]
+    - High efficiency loading with feather
+    - External dataset configuration (mostly)
+    - Pytorch Dataset
+        - Test/Train/Val split
+        - Provides class weights
+        - Normalizes features
  - Model Definition
+    - Time series classification
+    - Etc. [ToDo]
  - Training Scripts [In-Progress]
+    - Pytorch trainer
+        - Early stopping
+        - Complete metrics reporting
+    - Sklearn [In-Progress] [Redo]
  - Hyperparameter Sweeps
+    - Bayesian optimization with Optuna
+    - Experiment tracking with Neptune
 
 ## 5. Analysis
 

@@ -130,7 +130,8 @@ for p in participants:
             print(curr)
             checkpoint += check_increment
 
-        # adjust window start if this window contains a session_change, ignore end of sessions
+        # adjust window start if this window contains a session_change,
+        # ignore end of sessions
         while (
             data.loc[curr + window_size, "session_num"] != data.loc[curr, "session_num"]
         ):

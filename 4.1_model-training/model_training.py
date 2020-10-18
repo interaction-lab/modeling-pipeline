@@ -189,10 +189,12 @@ class ModelTraining:
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
             auc_roc = self.fit_sklearn_classifier()
         else:
-            weights = self.params["class_weights"]
-            weights = torch.FloatTensor(weights)
-            weights = weights.float().to(dev)
-            self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
+            if self.params["weight_classes"]:
+                weights = torch.FloatTensor(self.dataset.weights)
+                weights = weights.float().to(dev)
+                self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
+            else:
+                self.loss_func = torch.nn.BCEWithLogitsLoss()
 
             self.model = self.model.float().to(dev)
             self.data_loader = DataLoader(
@@ -202,17 +204,20 @@ class ModelTraining:
             self.opt = optim.SGD(self.model.parameters(), lr=self.params["lr"])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
 
-            auc_roc = self.fit_torch_nn()
-
+            try:
+                auc_roc = self.fit_torch_nn()
+            except Exception as e:
+                self.log_reports()
+                raise e
         return auc_roc
 
     def fit_torch_nn(self):
         es_los = EarlyStopping(
             "val_loss", patience=self.params["patience"], min_delta=0.005, mode="min"
         )
-        # es_val_auc = EarlyStopping(
-        #     "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
-        # )
+        es_val_auc = EarlyStopping(
+            "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
+        )
         stopping_backup = 0
 
         for epoch in tqdm(range(self.params["epochs"])):
@@ -222,9 +227,8 @@ class ModelTraining:
             self.dataset.status = "training"
             train_metric_values = self.run_epoch()
             self.metrics["train"].append(train_metric_values)
-
             loss_index = self.columns.index("Loss")
-            print(self.columns)
+            auROC_index = 5
 
             # EVALUATION
             self.model.eval()
@@ -232,45 +236,36 @@ class ModelTraining:
             with torch.no_grad():
                 val_metric_values = self.run_epoch()
                 self.metrics["val"].append(val_metric_values)
+                val_auROC = val_metric_values[auROC_index]
+                loss = val_metric_values[loss_index]
 
             if self.trial:
-                self.trial.report(self.metrics["val"][-1][0], step=epoch)
-                stop_loss = es_los.step(self.metrics["val"][-1][loss_index])
-                # stop_auc = es_val_auc.step(self.metrics["val"][-1][loss_index])
-                # if stop_auc or stop_loss:
-                #     patience += 1
-                # else:
-                #     patience = 0
+                self.trial.report(val_auROC, step=epoch)
 
-                if (
-                    stop_loss
-                    # (stop_loss and stop_auc)
-                    # or (patience > 2 * self.params["patience"])
-                    or epoch == self.params["epochs"] - 1
-                ):
-                    # TESTING AT THE END
-                    self.model.eval()
-                    self.dataset.status = "testing"
-                    with torch.no_grad():
-                        test_metric_values = self.run_epoch()
-                        self.metrics["test"] = [test_metric_values]
-                        self.log_reports()
-                    return self.metrics["test"][-1][0]
+            # EARLY STOPPING CHECK
+            stop_loss = es_los.step(loss)
+            stop_auc = es_val_auc.step(val_auROC)
+            if stop_auc or stop_loss:
+                patience += 1
+            else:
+                patience = 0
 
-            self.scheduler.step(self.metrics["val"][-1][0])
-            # if self.verbose:
-            # print(
-            #     f"Epoch {epoch+0:03} | Train: Loss-{train_loss:.2f} auROC-{train_wa_auROC:.4f} AP-{train_wa_AP:.4f} | Val: Loss-{val_loss:.4f} auROC-{val_wa_auROC:.4f} AP-{val_wa_AP:.4f}"
-            # )
+            stop_early = (stop_loss and stop_auc) or (
+                patience > self.params["patience"]
+            )
 
-        # TESTING
-        self.model.eval()
-        self.dataset.status = "testing"
-        with torch.no_grad():
-            test_metric_values = self.run_epoch()
-            self.metrics["test"] = [test_metric_values]
-            self.log_reports()
-        return self.metrics["test"][-1][0]
+            if stop_early or epoch == self.params["epochs"] - 1:
+                # TESTING
+                self.model.eval()
+                self.dataset.status = "testing"
+                with torch.no_grad():
+                    test_metric_values = self.run_epoch()
+                    self.metrics["test"] = [test_metric_values]
+                    auROC = val_metric_values[auROC_index]
+                    self.log_reports()
+                return auROC
+
+            self.scheduler.step(val_auROC)
 
     def run_epoch(self):
         total_loss = 0
@@ -289,8 +284,10 @@ class ModelTraining:
 
         predictions = np.vstack(predictions)
         labels = np.vstack(labels)
+        print("Generate metrics")
 
         result = self.eval_metrics(labels, predictions)
+        print("listify metrics")
         return self.listify_metrics(result, total_loss)
 
     def run_batch(self, xb, yb):
@@ -342,7 +339,7 @@ class ModelTraining:
             y_test, y_pred_list, average=None
         )  # average="weighted")
         # print(y_test, y_pred_list, self.params["target_names"])
-        print(auROC, AP)
+        # print(auROC, AP)
         report = classification_report(
             y_test,
             y_pred_list,
@@ -357,7 +354,7 @@ class ModelTraining:
         else:
             report[self.params["target_names"][0]]["auROC"] = auROC
             report[self.params["target_names"][0]]["AP"] = AP
-        pprint.pprint(report)
+        # pprint.pprint(report)
         return report
 
     def listify_metrics(self, results, loss):
@@ -368,6 +365,8 @@ class ModelTraining:
                 columns.append(f"{k}-{k2}")
                 values.append(v2)
         self.columns = columns
+        df = pd.DataFrame([values], columns=columns)
+        print(df)
         return values
 
     def log_reports(self):

@@ -63,7 +63,7 @@ def objective(trial):
             "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-3),
             "batch_size": trial.suggest_int("batch_size", 5, 25),
             "window": trial.suggest_int("window", 10, 30),
-            "class_weights": class_weights,
+            "weight_classes": trial.suggest_categorical("weighting", [True, False]),
             "dropout": 0.25,
             "epochs": 200,  # trial.suggest_int("epochs", 5, 35),
             "kern_size": trial.suggest_int("kern_size", 1, 5),
@@ -75,7 +75,7 @@ def objective(trial):
             "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-3),
             "batch_size": trial.suggest_int("batch_size", 15, 25),
             "window": trial.suggest_int("window", 10, 90),
-            "class_weights": class_weights,
+            "weight_classes": trial.suggest_categorical("weighting", [True, False]),
             "dropout": 0.25,
             "epochs": 200,  # trial.suggest_int("epochs", 5, 35),
             "kern_size": trial.suggest_int("kern_size", 2, 7),
@@ -90,7 +90,7 @@ def objective(trial):
     try:
         start = time.time()
         dataset = MyDataset(df, window=model_params["window"], labels=params["classes"])
-
+        model_params["num_features"] = dataset.df.shape[1]
         trainer = ModelTraining(model_params, dataset, trial, verbose=True)
         auc_roc = trainer.train_and_eval_model()
 
@@ -112,7 +112,7 @@ neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 # PARAMETERS TO MESS WITH
 name = "first_attempt"
 params = {"classes": ["speaking"]}
-class_weights = [1]
+weight_classes = [1]
 num_trials = 5
 models_to_try = ["tcn"]
 
