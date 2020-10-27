@@ -55,7 +55,7 @@ Helpful examples for recording data during experiments for later use.
 
 ### 2.3 Feature Importance
 
-[ToDo] Methods for picking features to reduce correlation and redundancy 
+[ToDo] Methods for picking features to reduce correlation and redundancy. See [here](https://machinelearningmastery.com/feature-selection-with-real-and-categorical-data/) for a good overview of methods and ideas on where to start.
 
   - Potential Integrations 
     - Orange
