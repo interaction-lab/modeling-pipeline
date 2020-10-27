@@ -49,13 +49,17 @@ Helpful examples for recording data during experiments for later use.
 ### 2.2 Feature Conversion (Data Cleaning)
 
  - Cleaning OpenFace
- - Converting OpenPose to CSV
+ - Converting OpenPose to CSV [ToDo]
  - [Normalizing Features](https://towardsai.net/p/data-science/how-when-and-why-should-you-normalize-standardize-rescale-your-data-3f083def38ff)
  - Windowing Features [In-Progress]
 
 ### 2.3 Feature Importance
 
-[ToDo] Methods for picking features to reduce correlation and redundancy ###############
+[ToDo] Methods for picking features to reduce correlation and redundancy 
+
+  - Potential Integrations 
+    - Orange
+    - SciPy
 
 ## 3. Annotation
 
@@ -65,6 +69,8 @@ Helpful examples for recording data during experiments for later use.
  - Converting Annotations to Labels
 
 ## 4. Modeling
+
+This is based on PyTorch and sklearn.
 
  - Data Loading [In-Progress]
     - High efficiency loading with feather
@@ -87,7 +93,14 @@ Helpful examples for recording data during experiments for later use.
 
 ## 5. Analysis
 
-[ToDo] Visualizing and analyzing results  #################
+[ToDo] Visualizing and analyzing results 
+  
+  - Potential Integrations 
+    - Plot.ly
+    - GGplot
+    - Bokeh
+    - Se
+    - Gensim
 
 ## 6. Production
 
@@ -101,6 +114,10 @@ Here is a helpful video for [installing opensmile](https://www.youtube.com/watch
 
 # TODO
 
+We welcome contributions. To contribute please make an issue requesting a change or a pull request with the expected change. To get started see the list below or any of the ToDo tags above.
+
 - See [ToDo] tags above
 - Freeze versions in requirements.txt and add Conda setup
-- Improve citation
+- Improve citations
+- Testing
+- Autogen documentation
