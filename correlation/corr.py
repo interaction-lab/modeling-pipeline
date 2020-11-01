@@ -18,10 +18,11 @@ def corr(data, threshold=0.9):
     # compare the corr between features and remove one of them if corr >= 0.9
     columns = np.full((corr.shape[0],), True, dtype=bool)
     for i in range(corr.shape[0]):
-        for j in range(i + 1, corr.shape[0]):
-            if corr.iloc[i, j] >= threshold:
-                if columns[j]:
-                    columns[j] = False
+        if columns[i]:
+            for j in range(i + 1, corr.shape[0]):
+                if corr.iloc[i, j] >= threshold:
+                    if columns[j]:
+                        columns[j] = False
     selected_columns = data.columns[columns]
     data = data[selected_columns]
     return selected_columns
