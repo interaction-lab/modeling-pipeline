@@ -1,194 +1,97 @@
 import pandas as pd
 import numpy as np
 from collections import Counter
+import yaml
+import argparse
+import sys
 
-of_cols = [
-    "of_AU01_c",
-    "of_AU02_c",
-    "of_AU04_c",
-    "of_AU05_c",
-    "of_AU06_c",
-    "of_AU07_c",
-    "of_AU09_c",
-    "of_AU10_c",
-    "of_AU12_c",
-    "of_AU14_c",
-    "of_AU15_c",
-    "of_AU17_c",
-    "of_AU20_c",
-    "of_AU23_c",
-    "of_AU25_c",
-    "of_AU26_c",
-    "of_AU28_c",
-    "of_AU45_c",
-    "of_gaze_0_x",
-    "of_gaze_0_y",
-    "of_gaze_0_z",
-    "of_gaze_1_x",
-    "of_gaze_1_y",
-    "of_gaze_1_z",
-    "of_gaze_angle_x",
-    "of_gaze_angle_y",
-    "of_gaze_distance",
-    "of_gaze_distance_x",
-    "of_gaze_distance_y",
-    "of_pose_Rx",
-    "of_pose_Ry",
-    "of_pose_Rz",
-    "of_pose_Tx",
-    "of_pose_Ty",
-    "of_pose_Tz",
-    "of_pose_distance",
-]
 
-# round_down features: features that are integers, if the median is not an integer round down
-int_features = [
-    "engagement",
-    "C_Valence",
-    "C_Arousal",
-    "C_Seat",
-    "of_AU01_c",
-    "of_AU02_c",
-    "of_AU04_c",
-    "of_AU05_c",
-    "of_AU06_c",
-    "of_AU07_c",
-    "of_AU09_c",
-    "of_AU10_c",
-    "of_AU12_c",
-    "of_AU14_c",
-    "of_AU15_c",
-    "of_AU17_c",
-    "of_AU20_c",
-    "of_AU23_c",
-    "of_AU25_c",
-    "of_AU26_c",
-    "of_AU28_c",
-    "of_AU45_c",
-    "of_success",
-    "op_num_people",
-    "ros_diff_1",
-    "ros_diff_2",
-    "ros_diff_3",
-    "ros_diff_4",
-    "ros_diff_5",
-    "ros_games_session",
-    "ros_mistakes_game",
-    "ros_mistakes_session",
-    "ros_in_game",
-    "ros_skill_EM",
-    "ros_skill_NC",
-    "ros_skill_OS",
-]
+class Windowing:
+    def __init__(self, csv, config="./windowing_config.yml"):
+        with open(config) as f:
+            self.config = yaml.load(f, Loader=yaml.FullLoader)
+        self.df = pd.read_csv(csv)
+        print(self.df)
 
-mode_cols = [
-    "ros_activity",
-    "ros_difficulty",
-    "ros_skill",
-    "ros_GAME_STATE",
-    "ros_PARTICIPANT_STATE",
-    "ros_ROBOT_STATE",
-]
+    def window_dataframe(self, window_size=30, step=10):
+        # Contains Cols = 1 iff exists a 1 in the window
+        # Mode Cols: take most common value in the window
+        # All other cols: if NaN for majority of window = NaN
+        # Otherwise, if not NaN for majority, use median.
+        self.windowed_df = pd.DataFrame()
 
-contains_cols = [
-    "ros_game_correct",
-    "ros_game_incorrect",
-    "ros_game_start",
-    "ros_mistake_made",
-]
+        self.window_float(window_size)
+        if self.config["binary_features"]:
+            self.window_binary(window_size, mode="median")
 
-participants = [5, 7, 9, 17]
+        self.windowed_df = self.windowed_df.loc[
+            self.windowed_df.index[np.arange(len(self.windowed_df)) % step == 1]
+        ]
+        print(self.windowed_df)
+        return self.windowed_df
 
-for p in participants:
-    file = "p" + str(p) + "_openpose_master_seat.csv"
-    data = pd.read_csv(file)
+    def window_float(self, window_size):
+        mean_cols = [f + "_mean" for f in self.config["float_features"]]
+        var_cols = [f + "_var" for f in self.config["float_features"]]
 
-    data = data.sort_values(["session_num", "timestamp"], ascending=[True, True])
-    data = data.reset_index(drop=True)
+        self.windowed_df[mean_cols] = (
+            self.df[self.config["float_features"]]
+            .rolling(window_size, min_periods=1)
+            .mean()
+        )
+        self.windowed_df[var_cols] = (
+            self.df[self.config["float_features"]]
+            .rolling(window_size, min_periods=1)
+            .var()
+        )
+        return
 
-    # Overwrite open face features with NaN in rows where not successful
-    for f in of_cols:
-        data.loc[data["of_success"] == 0, f] = np.nan
+    def window_binary(self, window_size, mode="median"):
+        if mode == "median":
+            median_cols = [f + "_median" for f in self.config["binary_features"]]
 
-    # Make sure all values numeric
-    for f in data.columns:
-        if f not in mode_cols and f not in contains_cols:
-            data[f] = pd.to_numeric(data[f], errors="coerce")
+            self.windowed_df[median_cols] = (
+                self.df[self.config["binary_features"]]
+                .rolling(window_size, min_periods=1)
+                .median()
+            )
+        elif mode == "mode":
+            mode_cols = [f + "_mode" for f in self.config["binary_features"]]
 
-    # Create Feature Dictionary for Each Window
-    curr = 0
-    window_size = 29
-    increment = 15
+            self.windowed_df[mode_cols] = (
+                self.df[self.config["binary_features"]]
+                .rolling(window_size, min_periods=1)
+                .mode()
+            )
+        elif mode == "max":
+            max_cols = [f + "_max" for f in self.config["binary_features"]]
 
-    checkpoint = 0
-    check_increment = 10000
-    print("Total", len(data))
+            self.windowed_df[max_cols] = (
+                self.df[self.config["binary_features"]]
+                .rolling(window_size, min_periods=1)
+                .max()
+            )
+        return
 
-    to_add = []
-    while curr + window_size < len(data):
-        if curr >= checkpoint:
-            print(curr)
-            checkpoint += check_increment
 
-        # adjust window start if this window contains a session_change,
-        # ignore end of sessions
-        while (
-            data.loc[curr + window_size, "session_num"] != data.loc[curr, "session_num"]
-        ):
-            curr += 1
-
-        window = data.loc[curr : curr + window_size]
-        append = {}  # feature dictionary for this window
-        for i in data.columns:
-            # Contains Cols = 1 iff exists a 1 in the window
-            if i in contains_cols:
-                append[i] = window[i].sum()
-            # Mode Cols: take most common value in the window
-            elif i in mode_cols:
-                occurence_count = Counter(window[i])
-                append[i] = occurence_count.most_common(1)[0][0]
-            # All other cols: if NaN for majority of window = NaN
-            elif (window[i].isna().sum()) >= ((window_size + 1) / 2):
-                append[i] = np.nan
-                if i in int_features:
-                    append[i + "_change"] = np.nan
-                else:
-                    append[i + "_var"] = np.nan
-            # Otherwise, if not NaN for majority, use median.
-            else:
-                append[i] = np.nanmedian(window[i])
-                if i in int_features:
-                    check = np.nanvar(window[i])
-                    if check > 0:
-                        append[i + "_change"] = 1
-                    else:
-                        append[i + "_change"] = 0
-                else:
-                    append[i + "_var"] = np.nanvar(window[i])
-        to_add.append(append)
-        curr += increment
-
-    # Create DataFrame with Windows
-    cols = []
-    for i in data.columns:
-        cols.append(i)
-        if i in int_features:
-            cols.append(i + "_change")
-        elif i not in mode_cols and i not in contains_cols:
-            cols.append(i + "_var")
-
-    answer = pd.DataFrame(columns=cols)
-    answer = answer.append(to_add, ignore_index=True, sort=True)
-
-    # Adjust, round some features
-    answer["timestamp"] = round(answer["timestamp"], 1)
-
-    for i in int_features:
-        answer[i] = np.floor(answer[i])
-
-    answer = answer.drop(
-        columns=["participant_var", "timestamp_var", "session_num_var"]
+def main(args):
+    parser = argparse.ArgumentParser(
+        description="take raw openface and produce clean files",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    answer.to_csv(
-        "p" + str(p) + "_windowed_openpose_before_segmentation_1s.csv", index=False
+    parser.add_argument(
+        "input_path", help="where to find input csv file",
     )
+    parser.add_argument("output_path", help="where to place the csv")
+    parser.add_argument(
+        "config", help="where to find input config file",
+    )
+    args = parser.parse_args()
+
+    w = Windowing(args.input_path, config=args.config)
+    df = w.window_dataframe()
+    df.to_csv(args.output_path, index=False)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

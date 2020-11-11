@@ -44,7 +44,7 @@ def timeit(method):
 
 
 class DataLoading:
-    def __init__(self, config="./data_loader_config.yml"):
+    def __init__(self, config=".config/data_loader_config.yml"):
         with open(config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
