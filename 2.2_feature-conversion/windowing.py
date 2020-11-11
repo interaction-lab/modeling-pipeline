@@ -76,7 +76,7 @@ class Windowing:
 
 def main(args):
     parser = argparse.ArgumentParser(
-        description="take raw openface and produce clean files",
+        description="window csv",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
