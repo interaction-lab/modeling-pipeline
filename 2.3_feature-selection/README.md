@@ -18,6 +18,10 @@
 
 When trying to do time series classification with Multivariate Time Series (MTS), it is often better to use an unsupervised univariate selection method based on cross correlation between features rather than between features and the label, which may not be well correlated with the features directly.
 
+### Features from Corr.
+
+Here we iterate through features and provide a list of features which are not correlated with each other. We utilize df.corr methods for Pearson, Spearman, and Kendal correlation coefficients.
+
 ## Wrapper vs Filter Methods
 
 Wrapper Methods
