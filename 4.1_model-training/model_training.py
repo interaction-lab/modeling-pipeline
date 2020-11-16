@@ -1,4 +1,11 @@
-import seaborn as sns
+import torch
+from torch.utils.data import DataLoader
+from torch import optim
+import pandas as pd
+import numpy as np
+from data_utils import MyDataset, DataLoading
+
+# from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.linear_model import SGDClassifier
@@ -6,8 +13,6 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.multioutput import MultiOutputClassifier
-
-import xgboost as xgb
 from sklearn.metrics import (
     confusion_matrix,
     classification_report,
@@ -15,31 +20,30 @@ from sklearn.metrics import (
     plot_confusion_matrix,
     average_precision_score,
 )
-from sklearn.utils.class_weight import compute_sample_weight
-from torch.utils.data import Dataset, DataLoader
-from torch import optim
-from data_utils import MyDataset, DataLoading
+
+import xgboost as xgb
 from model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
-import sklearn
-import pprint
-import torch
-import pandas as pd
-import numpy as np
-import optuna
+
+# import optuna
 import neptune
 from neptunecontrib.api import log_table
 from neptunecontrib.api import log_chart
+
 import matplotlib.pyplot as plt
+
+# import seaborn as sns
+# sns.set()
+
 import sys
 from tqdm import tqdm
-import pprint
+
+# import pprint
 
 if not sys.warnoptions:
     import warnings
 
     warnings.simplefilter("ignore")
 
-sns.set()
 
 # Needed to reproduce
 torch.manual_seed(0)
@@ -215,7 +219,7 @@ class ModelTraining:
 
     def fit_torch_nn(self):
         es_los = EarlyStopping(
-            "val_loss", patience=self.params["patience"], min_delta=0.005, mode="min"
+            "val_loss", patience=self.params["patience"], min_delta=0.001, mode="min"
         )
         # es_val_auc = EarlyStopping(
         #     "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
@@ -224,7 +228,7 @@ class ModelTraining:
 
         for self.epoch in tqdm(range(self.params["epochs"])):
 
-            ### TRAINING ###
+            # ******** TRAINING ********
             self.model.train()
             self.dataset.status = "training"
 
@@ -233,7 +237,7 @@ class ModelTraining:
             self.metrics["train"].append(train_metric_values)
             loss_index = self.columns.index("loss")
 
-            ### EVALUATION ###
+            # ******** EVALUATION ********
             self.model.eval()
             self.dataset.status = "validation"
 
@@ -258,7 +262,7 @@ class ModelTraining:
 
             stop_early = (stop_loss) or (patience > self.params["patience"])
 
-            ### TESTING ###
+            # ******** TESTING ********
             if stop_early or self.epoch == self.params["epochs"] - 1:
                 self.model.eval()
                 self.dataset.status = "testing"
@@ -342,14 +346,15 @@ class ModelTraining:
         return test_wa_auROC
 
     def test_fit(self, X_set, Y_set, set_name):
-        Y_pred = self.model.predict(X_set)
-        report = self.eval_metrics(Y_set, Y_pred, output_dict=True)
-        neptune.send_metric(f"{set_name}_wa_auROC", wa_auROC)
-        neptune.send_metric(f"{set_name}_wa_AP", wa_AP)
-        for k, v in report.items():
-            for k2, v2 in v.items():
-                neptune.send_metric(f"{set_name}_{k}-{k2}", v2)
-        return wa_auROC, wa_AP
+        # Y_pred = self.model.predict(X_set)
+        # report = self.eval_metrics(Y_set, Y_pred, output_dict=True)
+        # neptune.send_metric(f"{set_name}_wa_auROC", wa_auROC)
+        # neptune.send_metric(f"{set_name}_wa_AP", wa_AP)
+        # for k, v in report.items():
+        #     for k2, v2 in v.items():
+        #         neptune.send_metric(f"{set_name}_{k}-{k2}", v2)
+        # return wa_auROC, wa_AP
+        pass
 
     def eval_metrics(self, labels, preds, output_dict=True):
         y_pred_list = [a.squeeze().tolist() for a in preds]
@@ -405,6 +410,7 @@ class ModelTraining:
         # self.metrics = {"train": [], "val": [], "test": []}
         # self.columns
 
+        # Create a figure showing metrics progress while training
         fig, axes = plt.subplots(nrows=2, ncols=1)
         df = pd.DataFrame(self.metrics["train"], columns=self.columns)
         columns_to_plot = [
@@ -467,14 +473,15 @@ if __name__ == "__main__":
             "epochs": 200,
             "kern_size": 3,
         }
-    model_params["model"] = model
     model_params["weight_classes"] = True
-    model_params["num_features"] = data.df.shape[1]
+
+    model_params["model"] = model
     model_params["patience"] = 10
-    model_params["class_weights"] = data.weights
     model_params["target_names"] = classes
     model_params["num_classes"] = len(classes)
-    # print(data.df)
+    model_params["num_features"] = data.df.shape[1]
+    model_params["class_weights"] = data.weights
+
     trainer = ModelTraining(model_params, data, verbose=True)
 
     auc_roc = trainer.train_and_eval_model()

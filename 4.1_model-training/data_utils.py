@@ -157,6 +157,7 @@ class MyDataset(Dataset):
         self,
         df,
         window=2,
+        normalize=True,
         status: str = "training",
         overlap: bool = True,
         labels=["speaking"],
@@ -175,6 +176,7 @@ class MyDataset(Dataset):
         # Windowing parameters
         self.window = window
         self.overlap = overlap
+        self.norm = normalize
 
         self.setup_dataset()
         return
@@ -219,8 +221,9 @@ class MyDataset(Dataset):
         self.split()
 
         # Fit scalar on train
-        # self.scaler = StandardScaler()
-        self.normalize()
+        if self.norm:
+            # self.scaler = StandardScaler()
+            self.normalize()
 
         # Augment or find label balance
         self.weights = []

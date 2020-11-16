@@ -1,22 +1,19 @@
 import neptune
 import optuna
 import joblib
-import torch
+
+# import torch
 import neptunecontrib.monitoring.optuna as opt_utils
 import time
 
-import data_utils
+# from model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
 from data_utils import MyDataset, DataLoading
-
-import model_defs
-from model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
-
-import model_training
 from model_training import ModelTraining
 
 
 def objective(trial):
     joblib.dump(study, folder_location)
+    model_params = {}
 
     if model in ["tree", "forest"]:
         model_params = {
@@ -60,13 +57,12 @@ def objective(trial):
         model_params = {
             # TCN Params
             "num_layers": trial.suggest_int("num_layers", 2, 6),
-            "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-3),
-            "batch_size": trial.suggest_int("batch_size", 5, 25),
-            "window": trial.suggest_int("window", 10, 30),
-            "weight_classes": trial.suggest_categorical("weighting", [True, False]),
-            "dropout": 0.25,
-            "epochs": 200,  # trial.suggest_int("epochs", 5, 35),
+            "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-4),
+            "batch_size": trial.suggest_int("batch_size", 15, 25),
+            "window": trial.suggest_int("window", 5, 30),
             "kern_size": trial.suggest_int("kern_size", 1, 5),
+            "dropout": 0.25,
+            "epochs": 200,
         }
     if model in ["rnn", "gru", "lstm"]:
         model_params = {
@@ -74,23 +70,24 @@ def objective(trial):
             "num_layers": trial.suggest_int("num_layers", 2, 6),
             "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-3),
             "batch_size": trial.suggest_int("batch_size", 15, 25),
-            "window": trial.suggest_int("window", 10, 90),
-            "weight_classes": trial.suggest_categorical("weighting", [True, False]),
-            "dropout": 0.25,
-            "epochs": 200,  # trial.suggest_int("epochs", 5, 35),
+            "window": trial.suggest_int("window", 10, 30),
             "kern_size": trial.suggest_int("kern_size", 2, 7),
+            "dropout": 0.25,
+            "epochs": 200,
         }
-
-    model_params["model"] = model
-    model_params["patience"] = 10
-    model_params["target_names"] = params["classes"]
-    model_params["num_classes"] = len(model_params["target_names"])
 
     try:
         start = time.time()
         dataset = MyDataset(df, window=model_params["window"], labels=params["classes"])
+        # Hand tunable params:
+        model_params["patience"] = 10
+        model_params["weight_classes"] = True
+
+        model_params["model"] = model
+        model_params["target_names"] = params["classes"]
         model_params["num_features"] = dataset.df.shape[1]
         model_params["class_weights"] = dataset.weights
+        model_params["num_classes"] = len(model_params["target_names"])
 
         trainer = ModelTraining(model_params, dataset, trial, verbose=True)
         auc_roc = trainer.train_and_eval_model()
@@ -103,28 +100,39 @@ def objective(trial):
         return 0
 
 
+# Configure Data Loader
 config = "./config/data_loader_config.yml"
 data_loader = DataLoading(config)
+df = data_loader.get_all_sessions()
+
+# Start up Neptune
 neptune.init("cmbirmingham/Update-Turn-Taking")
 neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 
-####################
-# All models ["rnn", "lstm", "gru", "mlp", "forest", "tree", "tcn", "knn", "xgb"]
 
-# PARAMETERS TO MESS WITH
-name = "first_attempt"
-params = {"classes": ["speaking"]}
+# ***********PARAMETERS TO MESS WITH***********
+EXP_NAME = "still_fixing"
 num_trials = 15
+classes = ["speaking"]
+# All models ["rnn", "lstm", "gru", "mlp", "forest", "tree", "tcn", "knn", "xgb"]
 models_to_try = ["tcn"]
 
+# Record experiment details
+params = {"classes": classes, "pruner": "no pruning", "trials": f"{num_trials}"}
+tags = [
+    EXP_NAME,
+    f"{len(data_loader.config['sessions'])} sessions",
+    "unwindowed",
+    "unnormalized",
+]
 
-df = data_loader.get_all_sessions()
 
 for model in models_to_try:
-    ####################
-    print(f"creating {model} study")
+    print(
+        f"***********Creating study for {model} with {len(data_loader.config['sessions'])} sessions***********"
+    )
     neptune.create_experiment(
-        name="{}_{}".format(model, name),
+        name=f"{model}_{EXP_NAME}",
         params=params,
         upload_source_files=[
             "sweep.py",
@@ -134,13 +142,10 @@ for model in models_to_try:
             config,
         ],
     )
-    folder_location = "./studies/study_{}_{}.pkl".format(model, name)
-    neptune.append_tag(model)
-    neptune.append_tag("three sessions")
-    neptune.append_tag("Normalized")
+    folder_location = "./studies/study_{}_{}.pkl".format(model, EXP_NAME)
+    for t in tags:
+        neptune.append_tag(t)
 
     study = optuna.create_study(direction="maximize", pruner=optuna.pruners.NopPruner())
-
     study.optimize(objective, n_trials=num_trials, callbacks=[neptune_callback])
-
     neptune.stop()
