@@ -20,7 +20,8 @@ class Windowing:
         # Otherwise, if not NaN for majority, use median.
         self.windowed_df = pd.DataFrame()
 
-        self.window_float(window_size)
+        if self.config["float_features"]:
+            self.window_float(window_size)
         if self.config["binary_features"]:
             self.window_binary(window_size, mode="median")
 
@@ -46,9 +47,9 @@ class Windowing:
         )
         return
 
-    def window_binary(self, window_size, mode="median"):
+    def window_binary(self, window_size, mode="mode"):
         if mode == "median":
-            median_cols = [f + "_median" for f in self.config["binary_features"]]
+            median_cols = [f for f in self.config["binary_features"]]
 
             self.windowed_df[median_cols] = (
                 self.df[self.config["binary_features"]]
@@ -56,7 +57,7 @@ class Windowing:
                 .median()
             )
         elif mode == "mode":
-            mode_cols = [f + "_mode" for f in self.config["binary_features"]]
+            mode_cols = [f for f in self.config["binary_features"]]
 
             self.windowed_df[mode_cols] = (
                 self.df[self.config["binary_features"]]
@@ -64,7 +65,7 @@ class Windowing:
                 .mode()
             )
         elif mode == "max":
-            max_cols = [f + "_max" for f in self.config["binary_features"]]
+            max_cols = [f for f in self.config["binary_features"]]
 
             self.windowed_df[max_cols] = (
                 self.df[self.config["binary_features"]]
@@ -74,7 +75,7 @@ class Windowing:
         return
 
 
-def main(args):
+def get_args():
     parser = argparse.ArgumentParser(
         description="window csv",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -87,11 +88,15 @@ def main(args):
         "config", help="where to find input config file",
     )
     args = parser.parse_args()
+    return args
 
+
+def main():
+    args = get_args()
     w = Windowing(args.input_path, config=args.config)
     df = w.window_dataframe()
     df.to_csv(args.output_path, index=False)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main()
