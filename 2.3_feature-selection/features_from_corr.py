@@ -2,13 +2,18 @@ import argparse
 import numpy as np
 import pandas as pd
 import warnings
+
 warnings.filterwarnings("ignore")
 
 
 def calculateCorr(df, corr_method, threshold):
+    """ Methods include 'pearson', 'kendall', 'spearman'
+    """
     print("Calculating " + corr_method + "....")
 
-    df = df.drop(columns=['frame', 'confidence'])  # remove unrelated columns
+    df = df.drop(
+        columns=["frame", "confidence"], errors="ignore"
+    )  # remove unrelated columns
     n = len(df.columns)
     corr = df.corr(method=corr_method)
 
@@ -30,7 +35,7 @@ def intersection(feature_lists):
     return sorted(set.intersection(*[set(list) for list in feature_lists]))
 
 
-def get_arg_parser() -> argparse.ArgumentParser:
+def get_args() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Take a dataframe and return the features that are not correlated",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
@@ -42,16 +47,16 @@ def get_arg_parser() -> argparse.ArgumentParser:
         dest="input_filename",
         type=str,
         required=False,
-        default="./10/center.csv"
+        default="/media/chris/M2/2-Processed_Data/Video-OpenFace_win/5/center.csv",
     )
 
     parser.add_argument(
         "--threshold",
-        help="threshold to filter correlation",
+        help="threshold to filter correlation (higher yields more features)",
         dest="threshold",
         type=float,
         required=False,
-        default=0.9
+        default=0.7,
     )
 
     parser.add_argument(
@@ -60,15 +65,21 @@ def get_arg_parser() -> argparse.ArgumentParser:
         dest="corr_method",
         type=str,
         required=False,
-        default="pearson"
+        default="pearson",
     )
 
-    return parser
+    return parser.parse_args()
+
+
+def main():
+    args = get_args()
+
+    df = pd.read_csv(args.input_filename)
+    selected_features = calculateCorr(df, args.corr_method, args.threshold)
+    for c in selected_features:
+        print(c)
+    # print(selected_features)
 
 
 if __name__ == "__main__":
-    parsedArgs = get_arg_parser().parse_args()
-
-    df = pd.read_csv(parsedArgs.input_filename)
-    selected_features = calculateCorr(df, parsedArgs.corr_method, parsedArgs.threshold)
-    print(selected_features)
+    main()
