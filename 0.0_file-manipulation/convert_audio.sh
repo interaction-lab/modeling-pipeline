@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# Convert audio files with ffmpeg
+
 # Input & Output Dir
 BASE_INPUT_DIR="/media/$(whoami)/M2/1-Raw_Data/Videos"
 

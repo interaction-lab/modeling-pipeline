@@ -15,7 +15,7 @@ INPUT="audio/turns.json"
 OUTPUT="turns.csv"
 FACECSV="right.csv"
 
-for study_idx in 19; do
+for study_idx in {1..3} {5..13} {15..17} {20..27}; do
   echo "Study: ${study_idx}"
   mkdir -p "${BASE_FEATURES_DIR}/Annotations-Turns/${study_idx}"
   python annotations_to_csv.py \
