@@ -20,6 +20,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch import from_numpy
 
 from sklearn.preprocessing import StandardScaler
+from pandas_profiling import ProfileReport
 
 
 # Needed to reproduce
@@ -44,7 +45,7 @@ def timeit(method):
 
 
 class DataLoading:
-    def __init__(self, config=".config/data_loader_config.yml"):
+    def __init__(self, config="./config/data_loader_config.yml"):
         with open(config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -66,17 +67,19 @@ class DataLoading:
         for fs in self.config["feature_sets"]:
             for f in self.config["feature_files"][fs]:
                 file_name = join(self.config["data_dir"], fs, str(session_num), f)
+                print(f"reading {file_name}")
 
-                if "Video-OpenFace" == fs and position not in f:
+                if "Video-OpenFace" in fs and position not in f:
+                    print("not reading")
                     continue
-                elif "Annotation-Turns" == fs:
-                    print(f"reading {file_name}")
+                elif "Annotation-Turns" in fs:
+                    print(f"Annotation-Turns: {fs}, {position}")
                     annotations = pd.DataFrame(
                         {"speaking": pd.read_csv(file_name)[position]}
                     )
                     data_frames.append(annotations)
                 else:
-                    print(f"reading {file_name}")
+                    print(f"reading {fs}")
                     data_frames.append(
                         pd.read_csv(file_name)[self.config["features"][fs]]
                     )
@@ -99,10 +102,10 @@ class DataLoading:
         print("Loading Sessions")
         if exists(f"data/{self.data_hash}.feather"):
             df = pd.read_feather(f"data/{self.data_hash}.feather")
-            if "finishing" not in df.columns:
-                df = self.get_all_sessions(
-                    df, closing_window=self.config["features"]["closing_window"]
-                )
+            # if "finishing" not in df.columns:
+            #     df = self.get_all_sessions(
+            #         df, closing_window=self.config["features"]["closing_window"]
+            #     )
         else:
             sessions = [self.get_group_session(i) for i in self.config["sessions"]]
             print("Concatenating Sessions")
@@ -110,10 +113,20 @@ class DataLoading:
             df = self.get_turn_ending(
                 df, closing_window=self.config["features"]["closing_window"]
             )
+            # df = self.normalize(df)
             df = df.fillna(0)
             df.to_feather(f"data/{self.data_hash}.feather")
             print(df.columns)
             print(f"Saved to data/{self.data_hash}.feather")
+        return df
+
+    @timeit
+    def normalize(self, df):
+        print("Normalizing df columns")
+        for c in tqdm(df.columns):
+            if c not in ["finishing", "speaking"]:
+                df[c] = (df[c] - df[c].mean()) / df[c].std()
+
         return df
 
     @timeit
@@ -145,28 +158,29 @@ class MyDataset(Dataset):
         df,
         window=2,
         status: str = "training",
-        overlap: bool = False,
+        overlap: bool = True,
         labels=["speaking"],
     ):
-        self.labels = df[labels]
-        self.df = df.drop(["index"], axis=1)
-        self.df = df.drop(labels, axis=1)
-        # self.normalize()
-
-        self.window = window
         self.status = status
+        # Check for invalid features
+        assert df.isin([np.nan, np.inf, -np.inf]).sum().sum() == 0
+
+        self.labels = df[labels]
+
+        self.df = df.drop(["index"], axis=1)
+        self.df = self.df.drop(["speaking", "finishing"], axis=1)
+        # for c in self.df.columns:
+        #     print(c)
+
+        # Windowing parameters
+        self.window = window
         self.overlap = overlap
 
         self.setup_dataset()
+        return
 
     @timeit
-    def normalize(self):
-        print("Normalizing df columns")
-        for c in tqdm(self.df.columns):
-            self.df[c] = (self.df[c] - self.df[c].mean()) / self.df[c].std()
-
-    @timeit
-    def split(self, start=0, k=5):
+    def split(self, start=2, k=7):
         ind_l = len(self.indices)
         fold_size = math.floor(ind_l / k)
 
@@ -175,92 +189,98 @@ class MyDataset(Dataset):
             self.indices[split_points[i] : min(ind_l, split_points[i + 1])]
             for i in range(k)
         ]
+        # for f in folds:
+        #     print(f)
 
-        self.test_list = folds.pop(start)
-        self.val_list = folds.pop(start % (k - 1))
+        self.test_ind = folds.pop(start)
+        self.val_ind = folds.pop(start % (k - 1))
         flatten = itertools.chain.from_iterable
 
-        self.train_list = list(flatten(folds))
+        self.train_ind = list(flatten(folds))
 
         return
+
+    @timeit
+    def normalize(self):
+        print("Normalizing df columns")
+        for c in tqdm(self.df.columns):
+            if c not in ["finishing", "speaking"]:
+                self.df[c] = (self.df[c] - self.df[c].mean()) / self.df[c].std()
 
     @timeit
     def setup_dataset(self):
         print("setting up dataset")
         # Split into train/val/test
         if self.overlap:
-            self.indices = list(range(len(self.df)))
+            self.indices = list(range(len(self.df) - self.window))
         else:
-            self.indices = list(range(0, len(self.df), self.window))
+            self.indices = list(range(0, len(self.df) - (self.window - 1), self.window))
 
         self.split()
 
         # Fit scalar on train
         # self.scaler = StandardScaler()
+        self.normalize()
 
         # Augment or find label balance
         self.weights = []
         for c in self.labels.columns:
-            self.weights.append(len(self.labels) / self.labels[c].sum())
-        pass
+            perc = self.labels[c].sum() / len(self.labels)
+            print(f"{c} {perc} % of the time")
+            self.weights.append(1 / perc)
+
+            train_perc = self.labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
+            print(f"{c} {train_perc} % of the time in train")
+
+            val_perc = self.labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
+            print(f"{c} {val_perc} % of the time in val")
+
+            test_perc = self.labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
+            print(f"{c} {test_perc} % of the time in test")
+
+        return
 
     def get_dataset(self):
         pass
 
     def __len__(self):
         if self.status == "training":
-            return len(self.train_list)
+            return len(self.train_ind)
         if self.status == "validation":
-            return len(self.val_list)
+            return len(self.val_ind)
         if self.status == "testing":
-            return len(self.test_list)
+            return len(self.test_ind)
 
     def __getitem__(self, index):
-        # print(self.df[self.train_list[index] : self.train_list[index] + self.window])
+        assert self.status in [
+            "training",
+            "validation",
+            "testing",
+        ], "status must be testing, validation, or training"
+
         if self.status == "training":
-            return (
-                torch.FloatTensor(
-                    self.df[
-                        self.train_list[index] : self.train_list[index] + self.window
-                    ].values
-                ),
-                torch.from_numpy(
-                    np.asarray(self.labels.iloc[self.train_list[index] + self.window])
-                ),
-            )
-        if self.status == "validation":
-            return (
-                torch.FloatTensor(
-                    self.df[
-                        self.val_list[index] : self.val_list[index] + self.window
-                    ].values
-                ),
-                torch.from_numpy(
-                    np.asarray(self.labels.iloc[self.val_list[index] + self.window])
-                ),
-            )
-        if self.status == "testing":
-            return (
-                torch.FloatTensor(
-                    self.df[
-                        self.test_list[index] : self.test_list[index] + self.window
-                    ].values
-                ),
-                torch.from_numpy(
-                    np.asarray(self.labels.iloc[self.test_list[index] + self.window])
-                ),
-            )
+            l = self.train_ind
+        elif self.status == "validation":
+            l = self.val_ind
+        elif self.status == "testing":
+            l = self.test_ind
+
+        return (
+            torch.FloatTensor(self.df.iloc[l[index] : l[index] + self.window].values),
+            torch.FloatTensor(self.labels.iloc[l[index] + self.window - 1]),
+        )
 
 
 if __name__ == "__main__":
     data_loader = DataLoading()
     df = data_loader.get_all_sessions()
-    md = MyDataset(df, window=3, labels=["speaking", "finishing"])
-    md.normalize()
-    print(df.shape)
+    md = MyDataset(df, window=10, labels=["speaking"])
+
+    # To visualize:
+    # prof = ProfileReport(md.labels, minimal=True)
+    # prof.to_file(output_file="labels.html")
     # DL = DataLoader(md, batch_size=3)
     # for xb, yb in DL:
     #     print(yb)
     #     print(yb.shape)
     #     input()
-
