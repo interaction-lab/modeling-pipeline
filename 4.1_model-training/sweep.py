@@ -59,7 +59,7 @@ def objective(trial):
     if model in ["tcn"]:
         model_params = {
             # TCN Params
-            "num_layers": trial.suggest_int("num_layers", 6, 12),
+            "num_layers": trial.suggest_int("num_layers", 2, 6),
             "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-3),
             "batch_size": trial.suggest_int("batch_size", 5, 25),
             "window": trial.suggest_int("window", 10, 30),
@@ -82,8 +82,7 @@ def objective(trial):
         }
 
     model_params["model"] = model
-    model_params["num_features"] = 201
-    model_params["patience"] = 2
+    model_params["patience"] = 10
     model_params["target_names"] = params["classes"]
     model_params["num_classes"] = len(model_params["target_names"])
 
@@ -91,6 +90,8 @@ def objective(trial):
         start = time.time()
         dataset = MyDataset(df, window=model_params["window"], labels=params["classes"])
         model_params["num_features"] = dataset.df.shape[1]
+        model_params["class_weights"] = dataset.weights
+
         trainer = ModelTraining(model_params, dataset, trial, verbose=True)
         auc_roc = trainer.train_and_eval_model()
 
@@ -102,7 +103,8 @@ def objective(trial):
         return 0
 
 
-data_loader = DataLoading()
+config = "./config/data_loader_config.yml"
+data_loader = DataLoading(config)
 neptune.init("cmbirmingham/Update-Turn-Taking")
 neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 
@@ -112,8 +114,7 @@ neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 # PARAMETERS TO MESS WITH
 name = "first_attempt"
 params = {"classes": ["speaking"]}
-weight_classes = [1]
-num_trials = 5
+num_trials = 15
 models_to_try = ["tcn"]
 
 
@@ -130,13 +131,13 @@ for model in models_to_try:
             "model_training.py",
             "model_defs.py",
             "data_utils.py",
-            "data_loader_config.yml",
+            config,
         ],
     )
     folder_location = "./studies/study_{}_{}.pkl".format(model, name)
     neptune.append_tag(model)
-    neptune.append_tag("all sessions")
-    neptune.append_tag("Not Normalized")
+    neptune.append_tag("three sessions")
+    neptune.append_tag("Normalized")
 
     study = optuna.create_study(direction="maximize", pruner=optuna.pruners.NopPruner())
 

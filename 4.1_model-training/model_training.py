@@ -28,6 +28,7 @@ import numpy as np
 import optuna
 import neptune
 from neptunecontrib.api import log_table
+from neptunecontrib.api import log_chart
 import matplotlib.pyplot as plt
 import sys
 from tqdm import tqdm
@@ -44,7 +45,7 @@ sns.set()
 torch.manual_seed(0)
 np.random.seed(0)
 
-print(torch.cuda.is_available())
+print(f"Cuda? {torch.cuda.is_available()}")
 dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
@@ -192,6 +193,7 @@ class ModelTraining:
             if self.params["weight_classes"]:
                 weights = torch.FloatTensor(self.dataset.weights)
                 weights = weights.float().to(dev)
+                self.loss_func2 = torch.nn.BCELoss()
                 self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
             else:
                 self.loss_func = torch.nn.BCEWithLogitsLoss()
@@ -215,53 +217,55 @@ class ModelTraining:
         es_los = EarlyStopping(
             "val_loss", patience=self.params["patience"], min_delta=0.005, mode="min"
         )
-        es_val_auc = EarlyStopping(
-            "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
-        )
-        stopping_backup = 0
+        # es_val_auc = EarlyStopping(
+        #     "val_auc", patience=self.params["patience"], min_delta=0.002, mode="max"
+        # )
+        patience = 0
 
-        for epoch in tqdm(range(self.params["epochs"])):
+        for self.epoch in tqdm(range(self.params["epochs"])):
 
-            # TRAINING
+            ### TRAINING ###
             self.model.train()
             self.dataset.status = "training"
-            train_metric_values = self.run_epoch()
-            self.metrics["train"].append(train_metric_values)
-            loss_index = self.columns.index("Loss")
-            auROC_index = 5
 
-            # EVALUATION
+            train_metric_values = self.run_epoch()
+
+            self.metrics["train"].append(train_metric_values)
+            loss_index = self.columns.index("loss")
+
+            ### EVALUATION ###
             self.model.eval()
             self.dataset.status = "validation"
+
             with torch.no_grad():
                 val_metric_values = self.run_epoch()
+
                 self.metrics["val"].append(val_metric_values)
-                val_auROC = val_metric_values[auROC_index]
+                val_auROC = val_metric_values[5]
                 loss = val_metric_values[loss_index]
 
             if self.trial:
-                self.trial.report(val_auROC, step=epoch)
+                self.trial.report(val_auROC, step=self.epoch)
 
             # EARLY STOPPING CHECK
             stop_loss = es_los.step(loss)
-            stop_auc = es_val_auc.step(val_auROC)
-            if stop_auc or stop_loss:
+            # stop_auc = es_val_auc.step(val_auROC)
+
+            if stop_loss:
                 patience += 1
             else:
                 patience = 0
 
-            stop_early = (stop_loss and stop_auc) or (
-                patience > self.params["patience"]
-            )
+            stop_early = (stop_loss) or (patience > self.params["patience"])
 
-            if stop_early or epoch == self.params["epochs"] - 1:
-                # TESTING
+            ### TESTING ###
+            if stop_early or self.epoch == self.params["epochs"] - 1:
                 self.model.eval()
                 self.dataset.status = "testing"
                 with torch.no_grad():
                     test_metric_values = self.run_epoch()
                     self.metrics["test"] = [test_metric_values]
-                    auROC = val_metric_values[auROC_index]
+                    auROC = val_metric_values[5]
                     self.log_reports()
                 return auROC
 
@@ -269,8 +273,7 @@ class ModelTraining:
 
     def run_epoch(self):
         total_loss = 0
-        labels = []
-        predictions = []
+        labels, predictions = [], []
 
         for xb, yb in tqdm(self.data_loader):
             batch_loss, batch_predictions = self.run_batch(xb.to(dev), yb.to(dev))
@@ -280,29 +283,50 @@ class ModelTraining:
             predictions.append(batch_predictions.cpu().detach().numpy())
             # print(batch_loss)
 
-        total_loss = total_loss / len(self.data_loader)
+        avg_loss = total_loss / len(self.data_loader)
 
-        predictions = np.vstack(predictions)
-        labels = np.vstack(labels)
-        print("Generate metrics")
+        # print("Generate metrics")
+        result = self.eval_metrics(np.vstack(labels), np.vstack(predictions))
 
-        result = self.eval_metrics(labels, predictions)
-        print("listify metrics")
-        return self.listify_metrics(result, total_loss)
+        # print("listify metrics")
+        lm = self.listify_metrics(result, avg_loss)
+        print(
+            f"{self.epoch}-{self.dataset.status}: L: {avg_loss:.3f} | auROC {lm[5]:.3f} | mAP {lm[6]:.3f}"
+        )
+
+        return lm
 
     def run_batch(self, xb, yb):
-        out = self.model(xb)
-        loss = self.loss_func(out, yb)
-        out = torch.sigmoid(out)
+        raw_out = self.model(xb)
+        # BCEwithlogits does the sigmoid
+        loss = self.loss_func(raw_out, yb)
+        batch_loss = loss.item()
+
+        # BCEwithlogits occassionally returns a huge loss
+        # we replace these lossess
+        if batch_loss > 100:
+            loss_alt = self.loss_func2(torch.sigmoid(raw_out), yb)
+            batch_loss_alt = loss_alt.item()
+            # print(f"\nSwitching: {batch_loss} <- {batch_loss_alt}")
+            loss = loss_alt
+            batch_loss = batch_loss_alt
 
         if self.dataset.status == "training":
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10)
+            # if args.clip_gradient is not None:
+            #     total_norm = clip_grad_norm(self.model.parameters(), args.clip_gradient)
+            #     if total_norm > args.clip_gradient:
+            #         print("clipping gradient: {} with coef {}".format(total_norm, args.clip_gradient / total_norm))
             self.opt.step()
             self.opt.zero_grad()
 
-        preds = torch.round(out)
+        preds = torch.round(torch.sigmoid(raw_out))
+        # if batch_loss > 200:
+        #     print(f"\nLoss was {batch_loss}")
+        #     print(f"Or: {self.loss_func2(torch.sigmoid(raw_out), yb).item()}")
 
-        return loss.item(), preds
+        return batch_loss, preds
 
     def fit_sklearn_classifier(self):
         X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_dataset()
@@ -312,9 +336,7 @@ class ModelTraining:
         train_wa_auROC, train_wa_AP = self.test_fit(X_train, Y_train, "train")
         val_wa_auROC, val_wa_AP = self.test_fit(X_val, Y_val, "val")
         test_wa_auROC, test_wa_AP = self.test_fit(X_test, Y_test, "test")
-        print(
-            "auROC:", train_wa_auROC, val_wa_auROC, test_wa_auROC,
-        )
+        print("auROC:", train_wa_auROC, val_wa_auROC, test_wa_auROC)
         print("mAP:", train_wa_AP, val_wa_AP, test_wa_AP)
 
         return test_wa_auROC
@@ -332,9 +354,18 @@ class ModelTraining:
     def eval_metrics(self, labels, preds, output_dict=True):
         y_pred_list = [a.squeeze().tolist() for a in preds]
         y_test = [a.squeeze().tolist() for a in labels]
+        y_test = [int(a) for a in y_test]
 
         # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
-        auROC = roc_auc_score(y_test, y_pred_list, average=None)  # average="weighted")
+        try:
+            auROC = roc_auc_score(
+                y_test, y_pred_list, average=None
+            )  # average="weighted")
+        except Exception as e:
+            print(e)
+            print(f"labels: {y_test}")
+            print(f"predictions: {y_pred_list}")
+            raise e
         AP = average_precision_score(
             y_test, y_pred_list, average=None
         )  # average="weighted")
@@ -358,7 +389,7 @@ class ModelTraining:
         return report
 
     def listify_metrics(self, results, loss):
-        columns = ["Loss"]
+        columns = ["loss"]
         values = [loss]
         for k, v in results.items():
             for k2, v2 in v.items():
@@ -366,13 +397,34 @@ class ModelTraining:
                 values.append(v2)
         self.columns = columns
         df = pd.DataFrame([values], columns=columns)
-        print(df)
+        # print(df)
         return values
 
     def log_reports(self):
         # Here is where we can get creative showing what we want
         # self.metrics = {"train": [], "val": [], "test": []}
         # self.columns
+
+        fig, axes = plt.subplots(nrows=2, ncols=1)
+        df = pd.DataFrame(self.metrics["train"], columns=self.columns)
+        columns_to_plot = [
+            c for c in df.columns if ("support" not in c and "loss" not in c)
+        ]
+        df[columns_to_plot].plot(ax=axes[0])
+        df["loss"].plot(ax=axes[0], secondary_y=True, color="black")
+        axes[0].set_title("train")
+        print(df)
+
+        df = pd.DataFrame(self.metrics["val"], columns=self.columns)
+        columns_to_plot = [
+            c for c in df.columns if ("support" not in c and "loss" not in c)
+        ]
+        print(df)
+        df[columns_to_plot].plot(ax=axes[1])
+        df["loss"].plot(ax=axes[1], secondary_y=True, color="black")
+        axes[1].set_title("val")
+        # plt.show()
+        log_chart(name="performance", chart=fig)
 
         for k in ["train", "val", "test"]:
             df = pd.DataFrame(self.metrics[k], columns=self.columns)
@@ -393,34 +445,36 @@ class ModelTraining:
 
 
 if __name__ == "__main__":
+    print("Starting")
+    model_params = {}
     data_loader = DataLoading()
-    print("starting")
     df = data_loader.get_all_sessions()
 
-    window = 20
+    window = 5
     # classes = ["speaking", "finishing"]
     classes = ["speaking"]
-    data = MyDataset(df, window=window, labels=classes)
+    data = MyDataset(df, window=window, overlap=False, labels=classes)
 
     model = "tcn"
     if model in ["tcn", "rnn", "gru", "lstm"]:
         model_params = {
             # TCN Params
-            "num_layers": 5,
-            "lr": 5e-6,
+            "num_layers": 4,
+            "lr": 0.00001576805111634853,
             "batch_size": 30,
             "window": window,
             "dropout": 0.25,
             "epochs": 200,
-            "kern_size": 5,
+            "kern_size": 3,
         }
     model_params["model"] = model
-    model_params["num_features"] = 201
-    model_params["patience"] = 15
-    model_params["class_weights"] = [1]
+    model_params["weight_classes"] = True
+    model_params["num_features"] = data.df.shape[1]
+    model_params["patience"] = 10
+    model_params["class_weights"] = data.weights
     model_params["target_names"] = classes
-    model_params["num_classes"] = len(model_params["target_names"])
-
+    model_params["num_classes"] = len(classes)
+    # print(data.df)
     trainer = ModelTraining(model_params, data, verbose=True)
 
     auc_roc = trainer.train_and_eval_model()
