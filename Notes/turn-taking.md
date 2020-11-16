@@ -35,6 +35,12 @@
 [  ] We inspect and analyze our data and features
 - See multi-party-analysis
 
+[ ] Getting ready for model training
+- Window the features and grab mean/var
+- Choose features without high correlation
+- Normalize features
+- Save as feature-label df for all sessions
+
 [  ] We generate features files for use with our models
 - generate HDF5 files
 - See multi-party-modeling for where this story continues
