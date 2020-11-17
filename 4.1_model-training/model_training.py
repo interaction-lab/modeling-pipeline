@@ -213,7 +213,7 @@ class ModelTraining:
             try:
                 auc_roc = self.fit_torch_nn()
             except Exception as e:
-                self.log_reports()
+                # self.log_reports()
                 raise e
         return auc_roc
 
@@ -270,7 +270,7 @@ class ModelTraining:
                     test_metric_values = self.run_epoch()
                     self.metrics["test"] = [test_metric_values]
                     auROC = val_metric_values[5]
-                    self.log_reports()
+                    # self.log_reports()
                 return auROC
 
             self.scheduler.step(val_auROC)
@@ -411,7 +411,7 @@ class ModelTraining:
         # self.columns
 
         # Create a figure showing metrics progress while training
-        fig, axes = plt.subplots(nrows=2, ncols=1)
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15,15))
         df = pd.DataFrame(self.metrics["train"], columns=self.columns)
         columns_to_plot = [
             c for c in df.columns if ("support" not in c and "loss" not in c)
@@ -430,7 +430,8 @@ class ModelTraining:
         df["loss"].plot(ax=axes[1], secondary_y=True, color="black")
         axes[1].set_title("val")
         # plt.show()
-        log_chart(name="performance", chart=fig)
+        experiment.log_image('diagrams', fig)
+        # log_chart(name="performance", chart=fig)
 
         for k in ["train", "val", "test"]:
             df = pd.DataFrame(self.metrics[k], columns=self.columns)
