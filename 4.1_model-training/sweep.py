@@ -118,12 +118,17 @@ classes = ["speaking"]
 models_to_try = ["tcn"]
 
 # Record experiment details
-params = {"classes": classes, "pruner": "no pruning", "trials": f"{num_trials}"}
+params = {
+    "classes": classes,
+    "pruner": "no pruning",
+    "trials": f"{num_trials}",
+}
 tags = [
     EXP_NAME,
     f"{len(data_loader.config['sessions'])} sessions",
     "unwindowed",
     "unnormalized",
+    "comp: chris-personal",
 ]
 
 
