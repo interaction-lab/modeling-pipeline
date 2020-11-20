@@ -190,7 +190,7 @@ dependencies:
     - monotonic==1.5
     - moviepy==1.0.3
     - neptune-client==0.4.123
-    - neptune-contrib==0+unknown
+    - neptune-contrib==0.24.8
     - networkx==2.5
     - oauthlib==3.1.0
     - opencv-python==3.4.11.43
@@ -241,5 +241,5 @@ dependencies:
     - xgboost==1.2.1
     - xmltodict==0.12.0
     - youtube-dl==2020.9.20
-prefix: /home/chris/anaconda3/envs/mod-pipe
+prefix: /home/multiparty/anaconda3/envs/mod-pipe
 
