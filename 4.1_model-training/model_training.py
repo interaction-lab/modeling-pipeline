@@ -162,15 +162,25 @@ class ModelTraining:
                 class_weight="balanced",
             )
         elif params["model"] == "xgb":
-            self.model = MultiOutputClassifier(
-                xgb.XGBClassifier(
-                    objective="multi:softprob",
+            # Add single and multiclass options
+            if params["num_classes"] > 1:
+                self.model = MultiOutputClassifier(
+                    xgb.XGBClassifier(
+                        objective="multi:softprob",
+                        max_depth=params["max_depth"],
+                        num_class=params["num_classes"],
+                        booster=params["booster"],
+                        learning_rate=params["learning_rate"],
+                    )
+                )
+            else:
+                self.model = xgb.XGBClassifier(
+                    objective="binary:logistic",
                     max_depth=params["max_depth"],
                     num_class=params["num_classes"],
                     booster=params["booster"],
                     learning_rate=params["learning_rate"],
                 )
-            )
         elif params["model"] == "knn":
             self.model = KNeighborsClassifier(
                 n_neighbors=params["n_neighbors"], leaf_size=params["leaf_size"]
@@ -333,28 +343,28 @@ class ModelTraining:
         return batch_loss, preds
 
     def fit_sklearn_classifier(self):
+        print("Fitting sklearn classifier")
         X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_dataset()
 
         self.model.fit(X_train, Y_train)
+        self.metrics = {}
 
-        train_wa_auROC, train_wa_AP = self.test_fit(X_train, Y_train, "train")
-        val_wa_auROC, val_wa_AP = self.test_fit(X_val, Y_val, "val")
-        test_wa_auROC, test_wa_AP = self.test_fit(X_test, Y_test, "test")
-        print("auROC:", train_wa_auROC, val_wa_auROC, test_wa_auROC)
-        print("mAP:", train_wa_AP, val_wa_AP, test_wa_AP)
-
-        return test_wa_auROC
+        self.metrics["train"] = self.test_fit(X_train, Y_train, "train")
+        self.metrics["val"] = self.test_fit(X_val, Y_val, "val")
+        self.metrics["test"] = self.test_fit(X_test, Y_test, "test")
+        print(self.metrics)
+        return self.metrics["test"][5]
 
     def test_fit(self, X_set, Y_set, set_name):
-        # Y_pred = self.model.predict(X_set)
-        # report = self.eval_metrics(Y_set, Y_pred, output_dict=True)
+        Y_pred = self.model.predict(X_set)
+        result = self.eval_metrics(Y_set, Y_pred, output_dict=True)
+        lm = self.listify_metrics(result)
         # neptune.send_metric(f"{set_name}_wa_auROC", wa_auROC)
         # neptune.send_metric(f"{set_name}_wa_AP", wa_AP)
         # for k, v in report.items():
         #     for k2, v2 in v.items():
         #         neptune.send_metric(f"{set_name}_{k}-{k2}", v2)
-        # return wa_auROC, wa_AP
-        pass
+        return lm
 
     def eval_metrics(self, labels, preds, output_dict=True):
         y_pred_list = [a.squeeze().tolist() for a in preds]
@@ -393,7 +403,7 @@ class ModelTraining:
         # pprint.pprint(report)
         return report
 
-    def listify_metrics(self, results, loss):
+    def listify_metrics(self, results, loss=0):
         columns = ["loss"]
         values = [loss]
         for k, v in results.items():
@@ -411,44 +421,45 @@ class ModelTraining:
         # self.columns
 
         # Create a figure showing metrics progress while training
-        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15,15))
-        df = pd.DataFrame(self.metrics["train"], columns=self.columns)
-        columns_to_plot = [
-            c for c in df.columns if ("support" not in c and "loss" not in c)
-        ]
-        df[columns_to_plot].plot(ax=axes[0])
-        df["loss"].plot(ax=axes[0], secondary_y=True, color="black")
-        axes[0].set_title("train")
-        print(df)
+        # fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
+        # df = pd.DataFrame(self.metrics["train"], columns=self.columns)
+        # columns_to_plot = [
+        #     c for c in df.columns if ("support" not in c and "loss" not in c)
+        # ]
+        # df[columns_to_plot].plot(ax=axes[0])
+        # df["loss"].plot(ax=axes[0], secondary_y=True, color="black")
+        # axes[0].set_title("train")
+        # print(df)
 
-        df = pd.DataFrame(self.metrics["val"], columns=self.columns)
-        columns_to_plot = [
-            c for c in df.columns if ("support" not in c and "loss" not in c)
-        ]
-        print(df)
-        df[columns_to_plot].plot(ax=axes[1])
-        df["loss"].plot(ax=axes[1], secondary_y=True, color="black")
-        axes[1].set_title("val")
-        # plt.show()
-        experiment.log_image('diagrams', fig)
-        # log_chart(name="performance", chart=fig)
+        # df = pd.DataFrame(self.metrics["val"], columns=self.columns)
+        # columns_to_plot = [
+        #     c for c in df.columns if ("support" not in c and "loss" not in c)
+        # ]
+        # print(df)
+        # df[columns_to_plot].plot(ax=axes[1])
+        # df["loss"].plot(ax=axes[1], secondary_y=True, color="black")
+        # axes[1].set_title("val")
+        # # plt.show()
+        # experiment.log_image("diagrams", fig)
+        # # log_chart(name="performance", chart=fig)
 
-        for k in ["train", "val", "test"]:
-            df = pd.DataFrame(self.metrics[k], columns=self.columns)
-            log_table(k, df)
-            metrics_to_log = [
-                "auROC",
-                "AP",
-                "support",
-                "precision",
-                "recall",
-                "f1-score",
-                "loss",
-            ]
-            for c in self.columns:
-                for m in metrics_to_log:
-                    if m in c:
-                        neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
+        # for k in ["train", "val", "test"]:
+        #     df = pd.DataFrame(self.metrics[k], columns=self.columns)
+        #     log_table(k, df)
+        #     metrics_to_log = [
+        #         "auROC",
+        #         "AP",
+        #         "support",
+        #         "precision",
+        #         "recall",
+        #         "f1-score",
+        #         "loss",
+        #     ]
+        #     for c in self.columns:
+        #         for m in metrics_to_log:
+        #             if m in c:
+        #                 neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
+        pass
 
 
 if __name__ == "__main__":
@@ -462,7 +473,7 @@ if __name__ == "__main__":
     classes = ["speaking"]
     data = MyDataset(df, window=window, overlap=False, labels=classes)
 
-    model = "tcn"
+    model = "xgb"
     if model in ["tcn", "rnn", "gru", "lstm"]:
         model_params = {
             # TCN Params
@@ -473,6 +484,20 @@ if __name__ == "__main__":
             "dropout": 0.25,
             "epochs": 200,
             "kern_size": 3,
+        }
+    if model in ["tree", "forest"]:
+        model_params = {
+            # Tree/Forest Params
+            "max_depth": 4,
+            "criterion": "entropy",
+            "min_samples_leaf": 1e-3,
+            "max_features": "auto",
+        }
+    if model in ["xgb"]:
+        model_params = {
+            "max_depth": 5,
+            "booster": "dart",
+            "learning_rate": 0.01,
         }
     model_params["weight_classes"] = True
 

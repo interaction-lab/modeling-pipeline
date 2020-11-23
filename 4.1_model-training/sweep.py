@@ -21,17 +21,26 @@ def log_reports(metrics, columns):
     # self.columns
 
     # Create a figure showing metrics progress while training
-    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15,15))
-    df = pd.DataFrame(metrics["train"], columns=columns)
+    print(metrics)
+    print("setting up figures")
+    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
+    print("creating df with these columns")
+    print(columns)
+    print(metrics["train"])
+    print(len(columns), len(metrics["train"]))
+    df = pd.DataFrame([metrics["train"]], columns=columns)
+    print("df:", df)
     columns_to_plot = [
         c for c in df.columns if ("support" not in c and "loss" not in c)
     ]
+    print("creating df plot with these columns:")
+    print(columns_to_plot)
     df[columns_to_plot].plot(ax=axes[0])
     df["loss"].plot(ax=axes[0], secondary_y=True, color="black")
     axes[0].set_title("train")
-    print(df)
+    print("DF:")
 
-    df = pd.DataFrame(metrics["val"], columns=columns)
+    df = pd.DataFrame([metrics["val"]], columns=columns)
     columns_to_plot = [
         c for c in df.columns if ("support" not in c and "loss" not in c)
     ]
@@ -40,11 +49,12 @@ def log_reports(metrics, columns):
     df["loss"].plot(ax=axes[1], secondary_y=True, color="black")
     axes[1].set_title("val")
     # plt.show()
-    experiment.log_image('diagrams', fig)
+    print("send image")
+    experiment.log_image("diagrams", fig)
     # log_chart(name="performance", chart=fig)
-
+    print("send metrics")
     for k in ["train", "val", "test"]:
-        df = pd.DataFrame(metrics[k], columns=columns)
+        df = pd.DataFrame([metrics[k]], columns=columns)
         log_table(k, df)
         metrics_to_log = [
             "auROC",
@@ -60,6 +70,7 @@ def log_reports(metrics, columns):
                 if m in c:
                     neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
 
+
 def objective(trial):
     joblib.dump(study, folder_location)
     model_params = {}
@@ -70,25 +81,25 @@ def objective(trial):
             "max_depth": trial.suggest_int("max_depth", 4, 18),
             "criterion": trial.suggest_categorical("criterion", ["gini", "entropy"]),
             "min_samples_leaf": trial.suggest_loguniform("min_samples", 1e-3, 0.5),
+            "window": trial.suggest_int("window", 10, 30),
             "max_features": trial.suggest_categorical(
                 "max_features", ["auto", "sqrt", "log2"]
             ),
         }
-        model_params["window"] = 1
     if model in ["knn"]:
         model_params = {
             # KNN params
             "n_neighbors": trial.suggest_int("n_neighbors", 3, 16),
             "leaf_size": trial.suggest_int("leaf_size", 15, 45),
+            "window": trial.suggest_int("window", 10, 30),
         }
-        model_params["window"] = 1
     if model in ["xgb"]:
         model_params = {
             "max_depth": trial.suggest_int("max_depth", 5, 10),
             "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
+            "window": trial.suggest_int("window", 10, 30),
             "learning_rate": trial.suggest_loguniform("learning_rate", 0.01, 0.2),
         }
-        model_params["window"] = 1
     if model in ["mlp"]:
         model_params = {
             # MLP Params
@@ -101,7 +112,6 @@ def objective(trial):
             "solver": trial.suggest_categorical("solver", ["lbfgs", "sgd", "adam"]),
             "learning_rate": trial.suggest_loguniform("learning_rate", 1e-5, 5e-1),
         }
-        model_params["window"] = 1
     if model in ["tcn"]:
         model_params = {
             # TCN Params
@@ -127,7 +137,9 @@ def objective(trial):
 
     try:
         start = time.time()
-        dataset = MyDataset(df, window=model_params["window"], labels=params["classes"])
+        dataset = MyDataset(
+            df, window=model_params["window"], overlap=False, labels=params["classes"]
+        )
         # Hand tunable params:
         model_params["patience"] = 1
         model_params["weight_classes"] = True
@@ -137,9 +149,11 @@ def objective(trial):
         model_params["num_features"] = dataset.df.shape[1]
         model_params["class_weights"] = dataset.weights
         model_params["num_classes"] = len(model_params["target_names"])
-
+        print("Creating Trainer:")
         trainer = ModelTraining(model_params, dataset, trial, verbose=True)
+        print("Training and evaluating model:")
         auc_roc = trainer.train_and_eval_model()
+        print("Logging reports:")
         log_reports(trainer.metrics, trainer.columns)
 
         print(f"Round completed in {(time.time()-start)/60} min")
@@ -161,11 +175,11 @@ neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 
 
 # ***********PARAMETERS TO MESS WITH***********
-EXP_NAME = "still_fixing"
-num_trials = 15
+EXP_NAME = "full sklearn"
+num_trials = 25
 classes = ["speaking"]
 # All models ["rnn", "lstm", "gru", "mlp", "forest", "tree", "tcn", "knn", "xgb"]
-models_to_try = ["tcn"]
+models_to_try = ["forest", "mlp", "tree", "xgb"]
 
 # Record experiment details
 params = {
