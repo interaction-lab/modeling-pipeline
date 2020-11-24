@@ -17,41 +17,6 @@ import pandas as pd
 
 def log_reports(metrics, columns):
     # Here is where we can get creative showing what we want
-    # self.metrics = {"train": [], "val": [], "test": []}
-    # self.columns
-
-    # Create a figure showing metrics progress while training
-    print(metrics)
-    print("setting up figures")
-    fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
-    print("creating df with these columns")
-    print(columns)
-    print(metrics["train"])
-    print(len(columns), len(metrics["train"]))
-    df = pd.DataFrame([metrics["train"]], columns=columns)
-    print("df:", df)
-    columns_to_plot = [
-        c for c in df.columns if ("support" not in c and "loss" not in c)
-    ]
-    print("creating df plot with these columns:")
-    print(columns_to_plot)
-    df[columns_to_plot].plot(ax=axes[0])
-    df["loss"].plot(ax=axes[0], secondary_y=True, color="black")
-    axes[0].set_title("train")
-    print("DF:")
-
-    df = pd.DataFrame([metrics["val"]], columns=columns)
-    columns_to_plot = [
-        c for c in df.columns if ("support" not in c and "loss" not in c)
-    ]
-    print(df)
-    df[columns_to_plot].plot(ax=axes[1])
-    df["loss"].plot(ax=axes[1], secondary_y=True, color="black")
-    axes[1].set_title("val")
-    # plt.show()
-    print("send image")
-    experiment.log_image("diagrams", fig)
-    # log_chart(name="performance", chart=fig)
     print("send metrics")
     for k in ["train", "val", "test"]:
         df = pd.DataFrame([metrics[k]], columns=columns)
@@ -69,6 +34,27 @@ def log_reports(metrics, columns):
             for m in metrics_to_log:
                 if m in c:
                     neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
+
+    # df_train = pd.DataFrame([metrics["train"]], columns=columns)
+    # df_val = pd.DataFrame([metrics["val"]], columns=columns)
+    df_train = pd.DataFrame(metrics["train"], columns=columns)
+    df_val = pd.DataFrame(metrics["val"], columns=columns)
+    if df_val.shape[1] == 1:
+        return
+    else:
+        columns_to_plot = [c for c in df_train.columns if ("auROC" in c or "AP" in c)]
+        # Create a figure showing metrics progress while training
+        fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
+        df_train[columns_to_plot].plot(ax=axes[0])
+        df_train["loss"].plot(ax=axes[0], secondary_y=True, color="black")
+        axes[0].set_title("train")
+
+        df_val[columns_to_plot].plot(ax=axes[1])
+        df_val["loss"].plot(ax=axes[1], secondary_y=True, color="black")
+        axes[1].set_title("val")
+
+        experiment.log_image("diagrams", fig)
+    return
 
 
 def objective(trial):
@@ -191,12 +177,13 @@ tags = [
     EXP_NAME,
     f"{len(data_loader.config['sessions'])} sessions",
     "unwindowed",
-    "unnormalized",
+    "normalized",
     "comp: chris-personal",
 ]
 
 
 for model in models_to_try:
+    tags["model"] = model
     print(
         f"***********Creating study for {model} with {len(data_loader.config['sessions'])} sessions***********"
     )
