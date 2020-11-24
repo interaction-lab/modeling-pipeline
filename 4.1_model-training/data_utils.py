@@ -245,10 +245,10 @@ class MyDataset(Dataset):
 
     @timeit
     def get_dataset(self):
-        assert self.overlap == False, "Overlap must be false for sklearn"
-        print("flatten windows")
-        print(self.df.shape)
-        print(self.window)
+        assert self.overlap is False, "Overlap must be false for sklearn"
+        # print("flatten windows")
+        # print(self.df.shape)
+        # print(self.window)
         self.df = pd.concat(
             [
                 pd.DataFrame(self.df.values[w :: self.window],)
@@ -256,24 +256,24 @@ class MyDataset(Dataset):
             ],
             axis=1,
         )
-        print(self.df.shape)
+        # print(self.df.shape)
 
-        print("creating val")
+        # print("creating val")
         new_val_ind = [int(i / self.window) for i in self.val_ind]
-        print(new_val_ind[:20])
+        # print(new_val_ind[:20])
         X_val = np.array(self.df.values[new_val_ind])
 
-        print("creating test")
+        # print("creating test")
         new_test_ind = [int(i / self.window) for i in self.test_ind]
-        print(new_test_ind[:20])
+        # print(new_test_ind[:20])
         X_test = np.array(self.df.values[new_test_ind])
 
-        print("creating train")
+        # print("creating train")
         new_train_ind = [int(i / self.window) for i in self.train_ind]
-        print(new_train_ind[:20])
+        # print(new_train_ind[:20])
         X_train = np.array(self.df.values[new_train_ind])
 
-        print("creating labels")
+        # print("creating labels")
         Y_train = np.array(
             [self.labels.iloc[i + self.window - 1] for i in self.train_ind]
         )
