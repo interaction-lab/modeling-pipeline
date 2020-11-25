@@ -159,7 +159,7 @@ class MyDataset(Dataset):
         window=2,
         normalize=True,
         status: str = "training",
-        overlap: bool = True,
+        overlap: bool = False,
         labels=["speaking"],
     ):
         self.status = status
@@ -246,34 +246,29 @@ class MyDataset(Dataset):
     @timeit
     def get_dataset(self):
         assert self.overlap is False, "Overlap must be false for sklearn"
-        # print("flatten windows")
-        # print(self.df.shape)
-        # print(self.window)
-        self.df = pd.concat(
-            [
-                pd.DataFrame(self.df.values[w :: self.window],)
-                for w in range(self.window)
-            ],
-            axis=1,
-        )
-        # print(self.df.shape)
 
-        # print("creating val")
+        if exists(f"data/{self.data_hash}-{self.window}-sk.feather"):
+            self.df = pd.read_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
+        else:
+            self.df = pd.concat(
+                [
+                    pd.DataFrame(self.df.values[w :: self.window],)
+                    for w in range(self.window)
+                ],
+                axis=1,
+            )
+            self.df.columns = [f"c-{c}" for c in range(len(self.df.columns))]
+            self.df.to_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
+
         new_val_ind = [int(i / self.window) for i in self.val_ind]
-        # print(new_val_ind[:20])
         X_val = np.array(self.df.values[new_val_ind])
 
-        # print("creating test")
         new_test_ind = [int(i / self.window) for i in self.test_ind]
-        # print(new_test_ind[:20])
         X_test = np.array(self.df.values[new_test_ind])
 
-        # print("creating train")
         new_train_ind = [int(i / self.window) for i in self.train_ind]
-        # print(new_train_ind[:20])
         X_train = np.array(self.df.values[new_train_ind])
 
-        # print("creating labels")
         Y_train = np.array(
             [self.labels.iloc[i + self.window - 1] for i in self.train_ind]
         )
@@ -281,44 +276,6 @@ class MyDataset(Dataset):
         Y_test = np.array(
             [self.labels.iloc[i + self.window - 1] for i in self.test_ind]
         )
-        return X_train, X_val, X_test, Y_test, Y_train, Y_val
-        # print(dfs)
-        return
-        for w in range(self.window):
-            print("train", w)
-            X_train.append(self.df.iloc[[i + w for i in self.train_ind]].to_numpy())
-        X_train = np.concatenate(X_train, axis=1)
-
-        print("getting dataset for sklearn")
-        X_train, X_test, X_val = [], [], []
-        for w in range(self.window):
-            print("train", w)
-            X_train.append(self.df.iloc[[i + w for i in self.train_ind]].to_numpy())
-        X_train = np.concatenate(X_train, axis=1)
-        for w in range(self.window):
-            print("val", w)
-            X_val.append(self.df.iloc[[i + w for i in self.val_ind]].to_numpy())
-        X_val = np.concatenate(X_val, axis=1)
-        for w in range(self.window):
-            print("test", w)
-            X_test.append(self.df.iloc[[i + w for i in self.test_ind]].to_numpy())
-        X_test = np.concatenate(X_test, axis=1)
-
-        Y_train = np.array(
-            [self.labels.iloc[i + self.window - 1] for i in self.train_ind]
-        )
-        Y_val = np.array([self.labels.iloc[i + self.window - 1] for i in self.val_ind])
-        Y_test = np.array(
-            [self.labels.iloc[i + self.window - 1] for i in self.test_ind]
-        )
-        # X_train = np.array(self.df.iloc[self.train_ind]).squeeze()
-        # X_val = np.array(self.df.iloc[self.val_ind]).squeeze()
-        # X_test = np.array(self.df.iloc[self.test_ind]).squeeze()
-        # Y_test = np.array(self.labels.iloc[self.test_ind])
-        # Y_train = np.array(self.labels.iloc[self.train_ind])
-        # Y_val = np.array(self.labels.iloc[self.val_ind])
-        print("train data shape:", X_train.shape, Y_train.shape)
-
         return X_train, X_val, X_test, Y_test, Y_train, Y_val
 
     def __len__(self):
@@ -352,7 +309,8 @@ class MyDataset(Dataset):
 if __name__ == "__main__":
     data_loader = DataLoading()
     df = data_loader.get_all_sessions()
-    md = MyDataset(df, overlap=True, window=20, labels=["speaking"])
+    md = MyDataset(df, overlap=False, window=20, labels=["speaking"])
+    md.data_hash = data_loader.data_hash
     md.get_dataset()
     # To visualize:
     # prof = ProfileReport(md.labels, minimal=True)

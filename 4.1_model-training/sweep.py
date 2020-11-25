@@ -34,11 +34,11 @@ def log_reports(metrics, columns):
             for m in metrics_to_log:
                 if m in c:
                     neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
-
+    print("create graphs")
     # df_train = pd.DataFrame([metrics["train"]], columns=columns)
     # df_val = pd.DataFrame([metrics["val"]], columns=columns)
-    df_train = pd.DataFrame(metrics["train"], columns=columns)
-    df_val = pd.DataFrame(metrics["val"], columns=columns)
+    df_train = pd.DataFrame([metrics["train"]], columns=columns)
+    df_val = pd.DataFrame([metrics["val"]], columns=columns)
     if df_val.shape[1] == 1:
         return
     else:
@@ -126,6 +126,7 @@ def objective(trial):
         dataset = MyDataset(
             df, window=model_params["window"], overlap=False, labels=params["classes"]
         )
+        dataset.data_hash = data_loader.data_hash
         # Hand tunable params:
         model_params["patience"] = 1
         model_params["weight_classes"] = True
@@ -161,11 +162,12 @@ neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 
 
 # ***********PARAMETERS TO MESS WITH***********
-EXP_NAME = "full sklearn"
-num_trials = 25
-classes = ["speaking"]
-# All models ["rnn", "lstm", "gru", "mlp", "forest", "tree", "tcn", "knn", "xgb"]
-models_to_try = ["forest", "mlp", "tree", "xgb"]
+EXP_NAME = "test sklearn"
+num_trials = 2
+classes = ["finishing"]
+# Not working "mlp"
+# All models ["rnn", "lstm", "gru", "forest", "tree", "tcn", "knn", "xgb"]
+models_to_try = ["forest", "tree", "xgb"]
 
 # Record experiment details
 params = {
@@ -183,7 +185,7 @@ tags = [
 
 
 for model in models_to_try:
-    tags["model"] = model
+    tags.append(model)
     print(
         f"***********Creating study for {model} with {len(data_loader.config['sessions'])} sessions***********"
     )
