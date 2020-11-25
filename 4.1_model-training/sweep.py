@@ -4,7 +4,6 @@ import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 
-# import torch
 import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
@@ -17,7 +16,7 @@ def log_reports(metrics, columns):
     # Here is where we can get creative showing what we want
     print("send metrics")
     for k in ["train", "val", "test"]:
-        if k is "test":
+        if k is "test" or model in ["forest", "tree", "mlp", "knn", "xgb"]:
             df = pd.DataFrame([metrics[k]], columns=columns)
         else:
             df = pd.DataFrame(metrics[k], columns=columns)

@@ -1,4 +1,4 @@
-from sklearn.utils import class_weight
+# from sklearn.utils import class_weight
 import torch
 from torch.utils.data import DataLoader
 from torch import optim
@@ -9,9 +9,11 @@ from data_utils import MyDataset, DataLoading, timeit
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.neural_network import MLPClassifier
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.linear_model import SGDClassifier
+
+# from sklearn.linear_model import SGDClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.ensemble import GradientBoostingClassifier
+
+# from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.metrics import (
@@ -193,7 +195,9 @@ class ModelTraining:
             )
 
         self.metrics = {"train": [], "val": [], "test": []}
+        return
 
+    @timeit
     def train_and_eval_model(self):
 
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
