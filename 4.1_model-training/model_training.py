@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torch import optim
 import pandas as pd
 import numpy as np
-from data_utils import MyDataset, DataLoading
+from data_utils import MyDataset, DataLoading, timeit
 
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.neural_network import MLPClassifier
@@ -25,20 +25,10 @@ from sklearn.metrics import (
 import xgboost as xgb
 from model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
 
-# import optuna
-import neptune
-from neptunecontrib.api import log_table
-from neptunecontrib.api import log_chart
-
 import matplotlib.pyplot as plt
-
-# import seaborn as sns
-# sns.set()
 
 import sys
 from tqdm import tqdm
-
-# import pprint
 
 if not sys.warnoptions:
     import warnings
@@ -225,13 +215,11 @@ class ModelTraining:
             self.opt = optim.SGD(self.model.parameters(), lr=self.params["lr"])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
 
-            try:
-                auc_roc = self.fit_torch_nn()
-            except Exception as e:
-                raise e
+            auc_roc = self.fit_torch_nn()
         return auc_roc
 
     def fit_torch_nn(self):
+        print(f"Fitting PyTorch Classifier - {self.params['model']}")
         es_los = EarlyStopping("val_loss", patience=self.params["patience"])
 
         for self.epoch in tqdm(range(self.params["epochs"])):
@@ -250,13 +238,13 @@ class ModelTraining:
             self.dataset.status = "validation"
 
             with torch.no_grad():
-                val_metric_values, val_auROC = self.run_epoch()
+                val_metric_values, val_summary = self.run_epoch()
 
                 self.metrics["val"].append(val_metric_values)
                 val_loss = val_metric_values[loss_index]
 
             if self.trial:
-                self.trial.report(val_auROC, step=self.epoch)
+                self.trial.report(val_summary, step=self.epoch)
 
             # EARLY STOPPING CHECK
             stop_early = es_los.step(val_loss)
@@ -267,9 +255,9 @@ class ModelTraining:
                 self.dataset.status = "testing"
                 with torch.no_grad():
                     self.metrics["test"], _ = self.run_epoch()
-                return val_auROC
+                return val_summary
 
-            self.scheduler.step(val_auROC)
+            self.scheduler.step(val_summary)
 
     def run_epoch(self):
         total_loss = 0
@@ -281,17 +269,14 @@ class ModelTraining:
 
             labels.append(yb.numpy())
             predictions.append(batch_predictions.cpu().detach().numpy())
-            # print(batch_loss)
 
         avg_loss = total_loss / len(self.data_loader)
 
-        # print("Generate metrics")
         report, summary_stat = self.calculate_metrics(
             np.vstack(labels), np.vstack(predictions)
         )
 
-        # print("listify metrics")
-        m_list, m_df = self.listify_metrics(report, avg_loss)
+        m_list, _ = self.listify_metrics(report, avg_loss)
         s = self.dataset.status
         print(f"{self.epoch}-{s}: L: {avg_loss:.3f} | auROC {summary_stat:.3f}")
 
@@ -330,7 +315,7 @@ class ModelTraining:
         return batch_loss, preds
 
     def fit_sklearn_classifier(self):
-        print("Fitting sklearn classifier")
+        print(f"Fitting Sklearn Classifier - {self.params['model']}")
         X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_dataset()
         sample_weights = compute_sample_weight(class_weight="balanced", y=Y_train)
 
@@ -338,15 +323,14 @@ class ModelTraining:
         self.metrics = {}
 
         self.metrics["train"], _, _ = self.test_fit(X_train, Y_train, "train")
-        self.metrics["val"], _, _ = self.test_fit(X_val, Y_val, "val")
+        self.metrics["val"], _, val_result_summary = self.test_fit(X_val, Y_val, "val")
         self.metrics["test"], test_results_df, test_result_summary = self.test_fit(
             X_test, Y_test, "test"
         )
-        # print(f"All Metrics: {self.metrics}")
         print(f"Test results:")
         print(test_results_df)
 
-        return test_result_summary
+        return val_result_summary
 
     def test_fit(self, X_set, Y_set, set_name):
         Y_pred = self.model.predict(X_set)

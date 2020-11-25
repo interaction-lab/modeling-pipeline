@@ -49,8 +49,8 @@ class DataLoading:
         with open(config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
-        # We name our compressed datset using a hash of the features so we can reload
-        # it without having to recreate it from the csvs
+        # We name our compressed datset using a hash of the features so we
+        #   can reload it without having to recreate it from the csvs
         self.data_hash = hashlib.sha224(
             (str(self.config["sessions"]) + str(self.config["features"])).encode(
                 "UTF-8"
@@ -61,7 +61,6 @@ class DataLoading:
 
     def get_individual_session(self, session_num, position):
         assert session_num in self.config["sessions"]
-        # assert person in self.config["positions"]
         data_frames = []
 
         for fs in self.config["feature_sets"]:
@@ -97,41 +96,27 @@ class DataLoading:
     @timeit
     def get_all_sessions(self):
         # All sessions are either loaded if they have already been created
-        # or created from individual sessions. If the sessions are being recreated
-        # they are saved to save time on future loading.
+        #   or created from individual sessions. If the sessions are being recreated
+        #   they are saved to save time on future loading.
         print("Loading Sessions")
         if exists(f"data/{self.data_hash}.feather"):
             df = pd.read_feather(f"data/{self.data_hash}.feather")
-            # if "finishing" not in df.columns:
-            #     df = self.get_all_sessions(
-            #         df, closing_window=self.config["features"]["closing_window"]
-            #     )
         else:
             sessions = [self.get_group_session(i) for i in self.config["sessions"]]
-            print("Concatenating Sessions")
+
             df = pd.concat(sessions, axis=0).reset_index()
+
             df = self.get_turn_ending(
                 df, closing_window=self.config["features"]["closing_window"]
             )
-            # df = self.normalize(df)
+
             df = df.fillna(0)
+
             df.to_feather(f"data/{self.data_hash}.feather")
-            print(df.columns)
-            print(f"Saved to data/{self.data_hash}.feather")
-        return df
-
-    @timeit
-    def normalize(self, df):
-        print("Normalizing df columns")
-        for c in tqdm(df.columns):
-            if c not in ["finishing", "speaking"]:
-                df[c] = (df[c] - df[c].mean()) / df[c].std()
-
         return df
 
     @timeit
     def get_turn_ending(self, df, closing_window=45):
-        about_to_finish = 0
         df["finishing"] = float(0)
         for i in tqdm(range(len(df) - closing_window)):
             if df["speaking"].iloc[i]:
@@ -139,44 +124,27 @@ class DataLoading:
                     if not df["speaking"].iloc[i + j]:
                         df["finishing"].iloc[i] = float(1)
                         continue
-        print(df["finishing"])
-        print(sum(df["finishing"]))
-        return df
 
-    @timeit
-    def write_sessions(self, df):
-        print("Writing Sessions")
-        # df.to_hdf("test_file.hdf", "test", mode="w", complib="blosc", format="table")
-        df.to_feather(f"data/{self.data_hash}.feather")
-        print("Done")
+        return df
 
 
 class MyDataset(Dataset):
     @timeit
     def __init__(
-        self,
-        df,
-        window=2,
-        normalize=True,
-        status: str = "training",
-        overlap: bool = False,
-        labels=["speaking"],
+        self, df, window=2, normalize=True, overlap=False, labels=["speaking"],
     ):
-        self.status = status
+        self.norm = normalize
+
         # Check for invalid features
         assert df.isin([np.nan, np.inf, -np.inf]).sum().sum() == 0
 
         self.labels = df[labels]
-
         self.df = df.drop(["index"], axis=1)
         self.df = self.df.drop(["speaking", "finishing"], axis=1)
-        # for c in self.df.columns:
-        #     print(c)
 
         # Windowing parameters
         self.window = window
         self.overlap = overlap
-        self.norm = normalize
 
         self.setup_dataset()
         return
@@ -191,8 +159,6 @@ class MyDataset(Dataset):
             self.indices[split_points[i] : min(ind_l, split_points[i + 1])]
             for i in range(k)
         ]
-        # for f in folds:
-        #     print(f)
 
         self.test_ind = folds.pop(start)
         self.val_ind = folds.pop(start % (k - 1))
@@ -220,16 +186,17 @@ class MyDataset(Dataset):
 
         self.split()
 
-        # Fit scalar on train
+        # Normalize the data
         if self.norm:
+            # Fit scalar on train
             # self.scaler = StandardScaler()
             self.normalize()
 
-        # Augment or find label balance
+        # Find label balance
         self.weights = []
         for c in self.labels.columns:
             perc = self.labels[c].sum() / len(self.labels)
-            print(f"{c} {perc} % of the time")
+            print(f"{c} {perc} % of the time overall")
             self.weights.append(1 / perc)
 
             train_perc = self.labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
@@ -247,9 +214,11 @@ class MyDataset(Dataset):
     def get_dataset(self):
         assert self.overlap is False, "Overlap must be false for sklearn"
 
+        # Reuse datasets for faster sklearn performance
         if exists(f"data/{self.data_hash}-{self.window}-sk.feather"):
             self.df = pd.read_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
         else:
+            # Flatten dataframe by window for sklearn
             self.df = pd.concat(
                 [
                     pd.DataFrame(self.df.values[w :: self.window],)
@@ -294,15 +263,17 @@ class MyDataset(Dataset):
         ], "status must be testing, validation, or training"
 
         if self.status == "training":
-            l = self.train_ind
+            ind = self.train_ind
         elif self.status == "validation":
-            l = self.val_ind
+            ind = self.val_ind
         elif self.status == "testing":
-            l = self.test_ind
+            ind = self.test_ind
 
         return (
-            torch.FloatTensor(self.df.iloc[l[index] : l[index] + self.window].values),
-            torch.FloatTensor(self.labels.iloc[l[index] + self.window - 1]),
+            torch.FloatTensor(
+                self.df.iloc[ind[index] : ind[index] + self.window].values
+            ),
+            torch.FloatTensor(self.labels.iloc[ind[index] + self.window - 1]),
         )
 
 
