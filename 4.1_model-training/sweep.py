@@ -35,8 +35,12 @@ def log_reports(metrics, columns):
                 if m in c:
                     neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
     print("create graphs")
-    df_train = pd.DataFrame(metrics["train"], columns=columns)
-    df_val = pd.DataFrame(metrics["val"], columns=columns)
+    if model in ["forest", "tree", "mlp", "knn", "xgb"]:
+        df_train = pd.DataFrame([metrics["train"]], columns=columns)
+        df_val = pd.DataFrame([metrics["val"]], columns=columns)
+    else:
+        df_train = pd.DataFrame(metrics["train"], columns=columns)
+        df_val = pd.DataFrame(metrics["val"], columns=columns)
     if df_val.shape[1] == 1:
         # Don't plot single point graphs
         return
