@@ -133,8 +133,7 @@ class MyDataset(Dataset):
     def __init__(
         self, df, window=2, normalize=True, overlap=False, labels=["speaking"],
     ):
-        self.norm = normalize
-
+        self.status = "training"
         # Check for invalid features
         assert df.isin([np.nan, np.inf, -np.inf]).sum().sum() == 0
 
@@ -146,11 +145,25 @@ class MyDataset(Dataset):
         self.window = window
         self.overlap = overlap
 
+        # Normalize the data
+        if normalize:
+            # Fit scalar on train
+            # self.scaler = StandardScaler()
+            self.normalize_dataset()
+
         self.setup_dataset()
         return
 
     @timeit
-    def split(self, start=2, k=7):
+    def normalize_dataset(self):
+        print("Normalizing df columns")
+        for c in tqdm(self.df.columns):
+            if c not in ["finishing", "speaking"]:
+                self.df[c] = (self.df[c] - self.df[c].mean()) / self.df[c].std()
+
+    @timeit
+    def split_dataset(self, start=2, k=7):
+        # Create indices for splitting the dataset
         ind_l = len(self.indices)
         fold_size = math.floor(ind_l / k)
 
@@ -168,45 +181,35 @@ class MyDataset(Dataset):
 
         return
 
-    @timeit
-    def normalize(self):
-        print("Normalizing df columns")
-        for c in tqdm(self.df.columns):
-            if c not in ["finishing", "speaking"]:
-                self.df[c] = (self.df[c] - self.df[c].mean()) / self.df[c].std()
-
-    @timeit
-    def setup_dataset(self):
-        print("setting up dataset")
-        # Split into train/val/test
-        if self.overlap:
-            self.indices = list(range(len(self.df) - self.window))
-        else:
-            self.indices = list(range(0, len(self.df) - (self.window - 1), self.window))
-
-        self.split()
-
-        # Normalize the data
-        if self.norm:
-            # Fit scalar on train
-            # self.scaler = StandardScaler()
-            self.normalize()
-
+    def weight_labels(self):
         # Find label balance
         self.weights = []
         for c in self.labels.columns:
             perc = self.labels[c].sum() / len(self.labels)
             print(f"{c} {perc} % of the time overall")
-            self.weights.append(1 / perc)
 
             train_perc = self.labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
             print(f"{c} {train_perc} % of the time in train")
+            self.weights.append(1 / train_perc)
 
             val_perc = self.labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
             print(f"{c} {val_perc} % of the time in val")
 
             test_perc = self.labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
             print(f"{c} {test_perc} % of the time in test")
+
+    @timeit
+    def setup_dataset(self, window=1):
+        print("setting up dataset")
+        # Split into train/val/test
+        self.window = window
+        if self.overlap:
+            self.indices = list(range(len(self.df) - self.window))
+        else:
+            self.indices = list(range(0, len(self.df) - (self.window - 1), self.window))
+
+        self.split_dataset()
+        self.weight_labels()
 
         return
 

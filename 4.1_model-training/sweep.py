@@ -126,9 +126,7 @@ def objective(trial):
         }
 
     try:
-        dataset = MyDataset(
-            df, window=model_params["window"], overlap=False, labels=params["classes"]
-        )
+        dataset.setup_dataset(window=model_params["window"])
         dataset.data_hash = data_loader.data_hash
 
         model_params["patience"] = PATIENCE
@@ -155,46 +153,58 @@ def objective(trial):
         return 0
 
 
-# Configure Data Loader
-config = "./config/data_loader_config.yml"
+# *********************************************************
+# *****************PARAMETERS TO CUSTOMIZE*****************
+# *********************************************************
+
+# All models ["rnn", "lstm", "gru", "forest", "tree", "tcn", "knn", "xgb"]
+models_to_try = ["rnn", "lstm", "gru", "tcn"]  # Not working: "mlp"
+EXP_NAME = "full finishing"
+NUM_TRIALS = 35  # Number of trials to search for each model
+CLASSES = ["finishing"]  # ["speaking", "finishing"]
+PATIENCE = 2  # How many bad epochs to run before giving up
+WEIGHT_CLASSES = True  # Weight loss against class imbalance
+MAX_WINDOW = 30  # Max window the model can look through
+# Rename to history? 'window' usage is confusing
+COMPUTER = "cmb-laptop"
+FEATURES = "pearson"  # custom, pearson, custom-win, pearson-win
+OVERLAP = False
+NORMALIZE = True
+
+
+# ************************************************************
+# *****************Setup Experimental Details*****************
+# ************************************************************
+config = f"./config/data_loader_{FEATURES}_config.yml"
 data_loader = DataLoading(config)
 df = data_loader.get_all_sessions()
+dataset = MyDataset(df, normalize=NORMALIZE, overlap=OVERLAP, labels=CLASSES)
+
+# Record experimental details
+params = {
+    "trials": f"{NUM_TRIALS}",
+    "classes": CLASSES,
+    "patience": PATIENCE,
+    "weight classes": WEIGHT_CLASSES,
+    "pruner": "no pruning",  # See optuna.create_study
+    "overlap": OVERLAP,
+    "normalize": NORMALIZE,
+}
+tags = [
+    EXP_NAME,
+    f"{len(data_loader.config['sessions'])} sess",
+    "not-stat-windowed",
+    COMPUTER,
+]
 
 # Start up Neptune
 neptune.init("cmbirmingham/Update-Turn-Taking")
 neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 
 
-# ***********PARAMETERS TO MESS WITH***********
-EXP_NAME = "full finishing"
-NUM_TRIALS = 15
-CLASSES = ["finishing"]
-PATIENCE = 2
-WEIGHT_CLASSES = True
-MAX_WINDOW = 30
-
-# Not working "mlp"
-# All models ["rnn", "lstm", "gru", "forest", "tree", "tcn", "knn", "xgb"]
-models_to_try = ["rnn", "lstm", "gru", "tcn"]
-
-# Record experiment details
-params = {
-    "trials": f"{NUM_TRIALS}",
-    "classes": CLASSES,
-    "patience": PATIENCE,
-    "weight classes": WEIGHT_CLASSES,
-    "pruner": "no pruning",
-    "overlap": "none",
-    "normalize": "yes",
-}
-tags = [
-    EXP_NAME,
-    f"{len(data_loader.config['sessions'])} sess",
-    "not-stat-windowed",
-    "cmb-laptop",
-]
-
-
+# ****************************************************
+# *****************Run The Experiment*****************
+# ****************************************************
 for model in models_to_try:
     tags.append(model)
     print(
