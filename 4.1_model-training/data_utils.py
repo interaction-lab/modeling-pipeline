@@ -218,27 +218,29 @@ class MyDataset(Dataset):
 
         # Reuse datasets for faster sklearn performance
         if exists(f"data/{self.data_hash}-{self.window}-sk.feather"):
-            self.df = pd.read_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
+            self.sk_df = pd.read_feather(
+                f"data/{self.data_hash}-{self.window}-sk.feather"
+            )
         else:
             # Flatten dataframe by window for sklearn
-            self.df = pd.concat(
+            self.sk_df = pd.concat(
                 [
                     pd.DataFrame(self.df.values[w :: self.window],)
                     for w in range(self.window)
                 ],
                 axis=1,
             )
-            self.df.columns = [f"c-{c}" for c in range(len(self.df.columns))]
-            self.df.to_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
+            self.sk_df.columns = [f"c-{c}" for c in range(len(self.sk_df.columns))]
+            self.sk_df.to_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
 
         new_val_ind = [int(i / self.window) for i in self.val_ind]
-        X_val = np.array(self.df.values[new_val_ind])
+        X_val = np.array(self.sk_df.values[new_val_ind])
 
         new_test_ind = [int(i / self.window) for i in self.test_ind]
-        X_test = np.array(self.df.values[new_test_ind])
+        X_test = np.array(self.sk_df.values[new_test_ind])
 
         new_train_ind = [int(i / self.window) for i in self.train_ind]
-        X_train = np.array(self.df.values[new_train_ind])
+        X_train = np.array(self.sk_df.values[new_train_ind])
 
         Y_train = np.array(
             [self.labels.iloc[i + self.window - 1] for i in self.train_ind]

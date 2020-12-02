@@ -198,6 +198,7 @@ tags = [
     f"{len(data_loader.config['sessions'])} sess",
     "not-stat-windowed",
     COMPUTER,
+    FEATURES,
 ]
 
 # Start up Neptune
