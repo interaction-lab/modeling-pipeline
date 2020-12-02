@@ -12,9 +12,10 @@ We don't believe in reinventing the wheel and you shouldn't have to either. This
 ## Getting Started
 
 We recommend you use a virtual environment such as conda for managing dependencies. We recommend use of python==3.5+
- - install all dependencies with:
+ - install all dependencies by running the following in the mod :
 
-        `pip install -r requirements.txt`
+        `conda env create`
+
 
 
 # Script Organization
