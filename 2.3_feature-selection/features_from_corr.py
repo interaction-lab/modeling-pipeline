@@ -47,7 +47,8 @@ def get_args() -> argparse.ArgumentParser:
         dest="input_filename",
         type=str,
         required=False,
-        default="/media/chris/M2/2-Processed_Data/Video-OpenFace_win/5/center.csv",
+        # default="/media/chris/M2/2-Processed_Data/Video-OpenFace/5/center.csv",
+        default="/media/chris/M2/2-Processed_Data/Audio-Librosa/5/audio_features.csv",
     )
 
     parser.add_argument(
