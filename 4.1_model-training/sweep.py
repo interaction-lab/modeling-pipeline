@@ -156,20 +156,23 @@ def objective(trial):
 # *********************************************************
 # *****************PARAMETERS TO CUSTOMIZE*****************
 # *********************************************************
-
-# All models ["rnn", "lstm", "gru", "forest", "tree", "tcn", "knn", "xgb"]
-models_to_try = ["rnn", "lstm", "gru", "tcn"]  # Not working: "mlp"
-EXP_NAME = "full finishing"
-NUM_TRIALS = 35  # Number of trials to search for each model
-CLASSES = ["finishing"]  # ["speaking", "finishing"]
-PATIENCE = 2  # How many bad epochs to run before giving up
-WEIGHT_CLASSES = True  # Weight loss against class imbalance
-MAX_WINDOW = 30  # Max window the model can look through
-# Rename to history? 'window' usage is confusing
+EXP_NAME = "TESTING-Delete"
 COMPUTER = "cmb-laptop"
+
+# Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
+models_to_try = ["tree", "xgb", "rnn", "lstm", "gru", "tcn"]  # Not working: "mlp", "knn"
+
+NUM_TRIALS = 35  # Number of trials to search for each model
+PATIENCE = 2  # How many bad epochs to run before giving up
+
+CLASSES = ["finishing"]  # ["speaking", "finishing"], ["speaking"], ["finishing"]
+WEIGHT_CLASSES = True  # Weight loss against class imbalance
 FEATURES = "pearson"  # custom, pearson, custom-win, pearson-win
+
 OVERLAP = False
 NORMALIZE = True
+MAX_WINDOW = 30  # Max window the model can look through
+# Rename to history? 'window' usage is confusing
 
 
 # ************************************************************
@@ -183,10 +186,10 @@ dataset = MyDataset(df, normalize=NORMALIZE, overlap=OVERLAP, labels=CLASSES)
 # Record experimental details
 params = {
     "trials": f"{NUM_TRIALS}",
+    "pruner": "no pruning",  # See optuna.create_study
     "classes": CLASSES,
     "patience": PATIENCE,
     "weight classes": WEIGHT_CLASSES,
-    "pruner": "no pruning",  # See optuna.create_study
     "overlap": OVERLAP,
     "normalize": NORMALIZE,
 }

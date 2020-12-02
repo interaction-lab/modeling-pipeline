@@ -131,7 +131,7 @@ class DataLoading:
 class MyDataset(Dataset):
     @timeit
     def __init__(
-        self, df, window=2, normalize=True, overlap=False, labels=["speaking"],
+        self, df, normalize=True, overlap=False, labels=["speaking"],
     ):
         self.status = "training"
         # Check for invalid features
@@ -142,7 +142,6 @@ class MyDataset(Dataset):
         self.df = self.df.drop(["speaking", "finishing"], axis=1)
 
         # Windowing parameters
-        self.window = window
         self.overlap = overlap
 
         # Normalize the data
