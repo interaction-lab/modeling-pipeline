@@ -149,7 +149,6 @@ class ModelTraining:
                 min_samples_leaf=params["min_samples_leaf"],
                 max_features=params["max_features"],
                 class_weight="balanced",
-                verbose=True
             )
         elif params["model"] == "forest":
             self.model = RandomForestClassifier(
@@ -158,7 +157,7 @@ class ModelTraining:
                 min_samples_leaf=params["min_samples_leaf"],
                 max_features=params["max_features"],
                 class_weight="balanced",
-                verbose=True
+                verbose=1,
             )
         elif params["model"] == "xgb":
             # Add single and multiclass options
@@ -170,7 +169,7 @@ class ModelTraining:
                         num_class=params["num_classes"],
                         booster=params["booster"],
                         learning_rate=params["learning_rate"],
-                        verbose=True
+                        verbosity=1,
                     )
                 )
             else:
@@ -180,12 +179,13 @@ class ModelTraining:
                     num_class=params["num_classes"],
                     booster=params["booster"],
                     learning_rate=params["learning_rate"],
-                    verbose=True
+                    verbosity=1,
                 )
         elif params["model"] == "knn":
             self.model = KNeighborsClassifier(
-                n_neighbors=params["n_neighbors"], leaf_size=params["leaf_size"]
-                verbose=True
+                n_neighbors=params["n_neighbors"],
+                leaf_size=params["leaf_size"],
+                verbose=True,
             )
         elif params["model"] == "mlp":
             hidden_layer_sizes = tuple(
@@ -197,7 +197,7 @@ class ModelTraining:
                 learning_rate="adaptive",
                 learning_rate_init=params["learning_rate"],
                 hidden_layer_sizes=hidden_layer_sizes,
-                verbose=True
+                verbose=True,
             )
 
         self.metrics = {"train": [], "val": [], "test": []}

@@ -160,7 +160,7 @@ EXP_NAME = "TESTING-Delete"
 COMPUTER = "cmb-laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
-models_to_try = ["tree", "xgb", "rnn", "lstm", "gru", "tcn"]  # Not working: "mlp", "knn"
+models_to_try = ["xgb", "rnn", "lstm", "gru", "tcn"]  # Not working: "mlp", "knn"
 
 NUM_TRIALS = 35  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
