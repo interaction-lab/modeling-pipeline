@@ -120,6 +120,6 @@ We welcome contributions. To contribute please make an issue requesting a change
 - Fix Conda for cross platform distribution
 - Improve citations
 - Testing
-- Make into python modules
+- [Make into python modules/package](https://python-packaging-tutorial.readthedocs.io/en/latest/setup_py.html)
 - Autogen documentation
 - Update folder parsing from Bash to Python using OS or Sys libraries
