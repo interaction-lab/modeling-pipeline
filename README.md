@@ -12,11 +12,11 @@ We don't believe in reinventing the wheel and you shouldn't have to either. This
 ## Getting Started
 
 We recommend you use a virtual environment such as conda for managing dependencies. We recommend use of python==3.5+
- - install all dependencies by running the following in the mod :
+ - install all dependencies by running the following in the modeling-pipeline directory:
 
         `conda env create`
 
-
+Note: Known issues with windows install
 
 # Script Organization
 
@@ -52,15 +52,12 @@ Helpful examples for recording data during experiments for later use.
  - Cleaning OpenFace
  - Converting OpenPose to CSV [ToDo]
  - [Normalizing Features](https://towardsai.net/p/data-science/how-when-and-why-should-you-normalize-standardize-rescale-your-data-3f083def38ff)
- - Windowing Features [In-Progress]
+ - Windowing Features
 
 ### 2.3 Feature Importance
 
-[ToDo] Methods for picking features to reduce correlation and redundancy. See [here](https://machinelearningmastery.com/feature-selection-with-real-and-categorical-data/) for a good overview of methods and ideas on where to start.
+ - Pick uncorrelated features
 
-  - Potential Integrations 
-    - Orange
-    - SciPy
 
 ## 3. Annotation
 
@@ -73,7 +70,7 @@ Helpful examples for recording data during experiments for later use.
 
 This is based on PyTorch and sklearn.
 
- - Data Loading [In-Progress]
+ - Data Loading
     - High efficiency loading with feather
     - External dataset configuration (mostly)
     - Pytorch Dataset
@@ -82,12 +79,13 @@ This is based on PyTorch and sklearn.
         - Normalizes features
  - Model Definition
     - Time series classification
+    - Text based Models [ToDo]
     - Etc. [ToDo]
- - Training Scripts [In-Progress]
+ - Training Scripts 
     - Pytorch trainer
         - Early stopping
         - Complete metrics reporting
-    - Sklearn [In-Progress] [Redo]
+    - Sklearn 
  - Hyperparameter Sweeps
     - Bayesian optimization with Optuna
     - Experiment tracking with Neptune
@@ -95,6 +93,7 @@ This is based on PyTorch and sklearn.
 ## 5. Analysis
 
 [ToDo] Visualizing and analyzing results 
+  - Visualize labels over test set [ToDo]
   
   - Potential Integrations 
     - Plot.ly
@@ -118,7 +117,9 @@ Here is a helpful video for [installing opensmile](https://www.youtube.com/watch
 We welcome contributions. To contribute please make an issue requesting a change or a pull request with the expected change. To get started see the list below or any of the ToDo tags above.
 
 - See [ToDo] tags above
-- Freeze versions in requirements.txt and add Conda setup
+- Fix Conda for cross platform distribution
 - Improve citations
 - Testing
+- Make into python modules
 - Autogen documentation
+- Update folder parsing from Bash to Python using OS or Sys libraries
