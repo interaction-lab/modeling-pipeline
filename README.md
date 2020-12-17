@@ -28,6 +28,7 @@ Basic scripts for easily reogranizing data in folders and manipulating data file
  - Reorganizing files
  - Cropping videos
  - Changing file types or names
+ - Upload Data and Download [ToDo]
  - etc.
 
 ## 1. Data Collection Examples
