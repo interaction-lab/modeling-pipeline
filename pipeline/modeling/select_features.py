@@ -9,11 +9,8 @@ warnings.filterwarnings("ignore")
 def calculateCorr(df, corr_method, threshold):
     """ Methods include 'pearson', 'kendall', 'spearman'
     """
-    print("Calculating " + corr_method + "....")
-
-    df = df.drop(
-        columns=["frame", "confidence"], errors="ignore"
-    )  # remove unrelated columns
+    # remove unrelated columns
+    df = df.drop(columns=["frame", "confidence"], errors="ignore")
     n = len(df.columns)
     corr = df.corr(method=corr_method)
 

@@ -14,9 +14,11 @@ We don't believe in reinventing the wheel and you shouldn't have to either. This
 We recommend you use a virtual environment such as conda for managing dependencies. We recommend use of python==3.5+
  - install all dependencies by running the following in the modeling-pipeline directory:
 
-        `conda env create`
+        `conda create --name pipeline python=3.8`
+        `conda activate pipeline`
+        `pip install -r requirements.txt`
 
-Note: Known issues with windows install
+Note: Choose your version of [pytorch](https://pytorch.org/)
 
 # Script Organization
 
@@ -91,7 +93,7 @@ This is based on PyTorch and sklearn.
     - Bayesian optimization with Optuna
     - Experiment tracking with Neptune
 
-## 5. Analysis
+## 5. Analysis 
 
 [ToDo] Visualizing and analyzing results 
   - Visualize labels over test set [ToDo]

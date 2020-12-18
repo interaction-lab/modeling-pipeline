@@ -1,33 +1,43 @@
-import csv
-from collections import OrderedDict
 from pathlib import Path
-from itertools import zip_longest, count
 import argparse
 import pandas as pd
 import numpy as np
-import re
-import functools
 import sys
-
-from typing import List, Optional, Pattern
 
 NUM_FRAMES_PER_SECOND: int = 30
 
 
-def handle_duplicates(df: pd.DataFrame) -> pd.DataFrame:
-    print("checking duplicates")
-    # get duplicated rows
+def drop_columns(df: pd.DataFrame, drop_key: str, drop_list: list = ["face_id", "timestamp", "success"]):
+    """Drop columns according to key or custom drop list
+
+    Args:
+        df (pd.DataFrame): [description]
+        drop_key (str): [description]
+        drop_list (list, optional): [description]. Defaults to ["face_id", "timestamp", "success"].
+
+    Returns:
+        [type]: clean df without columns
+    """
+    cols_to_drop = [c for c in df.columns if drop_key in c.lower()] + drop_list
+    df = df.drop(columns=cols_to_drop)
+    return df
+
+
+def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+    """Remove duplicate rows from an Openface CSV
+
+    TODO: double check this function is correct (is partially redundant?)
+
+    Args:
+        df (pd.DataFrame): dataframe to clean
+
+    Returns:
+        pd.DataFrame: cleaned dataframe
+    """
     # see https://thispointer.com/pandas-find-duplicate-rows-in-a-dataframe-based-on-all-or-selected-columns-using-dataframe-duplicated-in-python/
     duplicated_mask = df.duplicated(subset=["frame"], keep=False)
-    cols_to_drop = [c for c in df.columns if c.lower()[:7] == "eye_lmk"] + [
-        "face_id",
-        "timestamp",
-        "success",
-    ]
     if not np.any(duplicated_mask):
-        print("No Duplicates")
-        df_features = df.drop(columns=cols_to_drop)
-        return df_features
+        return df
     else:
         print("duplicate #: {}".format(np.count_nonzero(duplicated_mask)))
         df_frame = df[duplicated_mask].groupby("frame")
@@ -41,11 +51,9 @@ def handle_duplicates(df: pd.DataFrame) -> pd.DataFrame:
                 failed_group = group[~success_mask]
 
                 drop_indices = drop_indices.append(failed_group.index)
-                # drop failed rows
                 group = group.drop(failed_group.index)
 
             if group.shape[0] == 1:
-                # if only one row left (no duplicates in this group), return
                 continue
 
             # largest_confidence = group.sort_values(by='confidence', ascending=False)["confidence"].iloc[0]
@@ -55,50 +63,49 @@ def handle_duplicates(df: pd.DataFrame) -> pd.DataFrame:
                 low_confidence_group = group[~confidence_mask]
 
                 drop_indices = drop_indices.append(low_confidence_group.index)
-                # drop rows with low confidence
                 group = group.drop(low_confidence_group.index)
 
             if group.shape[0] == 1:
-                # if only one row left (no duplicates in this group), return
                 continue
 
-        df_features = df.drop(columns=cols_to_drop)
-
         # keep the row closest to previous row (the row before the duplicate group)
-        group_diff = np.sqrt((df_features.iloc[prev_index] - group) ** 2).sum(axis=1)
+        group_diff = np.sqrt((df.iloc[prev_index] - group) ** 2).sum(axis=1)
         far_dist_indices = group_diff.sort_values(ascending=False).iloc[:-1].index
         drop_indices = drop_indices.append(far_dist_indices)
 
         print("num duplication deleted: {}".format(drop_indices.shape[0]))
-        return df_features.drop(index=drop_indices)
+        return df.drop(index=drop_indices)
 
 
-def parse_csv(input_file: Path) -> pd.DataFrame:
-    # TODO: check if inplace operation is better
-    print("reading input from ", input_file)
-    df = pd.read_csv(input_file, header=0)
+def reformat_csv(src_path: Path, dst_path: Path) -> pd.DataFrame:
+    """Drops unused columns and removes duplicate rows
+
+    This function is intended for cleaning up an openface csv with a single
+    person detected.
+
+    Args:
+        src_path (Path): path to openface csv
+        dst_path (Path): path to openface csv
+
+    Returns:
+        pd.DataFrame: [description]
+    """
+    df = pd.read_csv(src_path, header=0)
     df = df.rename(columns=lambda x: x.strip())
 
-    # prefix = input_file.stem + "_"
+    df = drop_columns(df, "eye_lmk", drop_list=["face_id", "timestamp", "success"])
+    df = remove_duplicates(df)
 
-    # drop face_id when returned
-    df2 = handle_duplicates(df)
     # normalize timestamp
-    df2["timestamp"] = (df2["frame"] - 1) / NUM_FRAMES_PER_SECOND
+    df["timestamp"] = (df["frame"] - 1) / NUM_FRAMES_PER_SECOND
 
-    # rename headers
-    # see https://cmdlinetips.com/2018/03/how-to-change-column-names-and-row-indexes-in-pandas/
-    # return df.rename(
-    #     columns=lambda x: prefix + x
-    #     if ("frame" not in x) and ("timestamp" not in x)
-    #     else x
-    # )
-    return df2
+    df.to_csv(dst_path, index=False)
+    return
 
 
-def main(args):
+def parse_args(args):
     parser = argparse.ArgumentParser(
-        description="take raw openface and produce clean files",
+        description="take raw openface and produce clean files (for one person)",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
@@ -106,9 +113,12 @@ def main(args):
     )
     parser.add_argument("output_path", help="where to place the csv")
     args = parser.parse_args()
+    return args
 
-    df = parse_csv(args.input_path)
-    df.to_csv(args.output_path, index=False)
+
+def main(args):
+    args = parse_args(args)
+    reformat_csv(args.input_path, args.output_path)
 
 
 if __name__ == "__main__":

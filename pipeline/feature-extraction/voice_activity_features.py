@@ -7,6 +7,7 @@ import sys
 import json
 import wave
 import os
+import argparse
 
 import webrtcvad
 
@@ -58,7 +59,7 @@ def frame_generator(frame_duration_ms, audio, sample_rate):
     timestamp = 0.0
     duration = (float(n) / sample_rate) / 2.0
     while offset + n < len(audio):
-        yield Frame(audio[offset : offset + n], timestamp, duration)
+        yield Frame(audio[offset: offset + n], timestamp, duration)
         timestamp += duration
         offset += n
 
@@ -144,18 +145,25 @@ def vad_collector(sample_rate, frame_duration_ms, padding_duration_ms, vad, fram
         )
 
 
-def main(args):
-    if len(args) != 2:
-        sys.stderr.write(
-            "Usage: voice_activity.py <aggressiveness> <path to wav file>\n"
-        )
-        sys.exit(1)
-    audio, sample_rate = read_wave(args[1])
-    vad = webrtcvad.Vad(int(args[0]))
+def get_voice_activity(src_audio: str, aggressiveness: int, dst_dir: str):
+    """The voice activity in an audio file is detected and stored.
+
+    Args:
+        src_audio (str): path to src audio
+        aggressiveness (int): an integer between 0 and 3. 0 is the least aggressive about 
+                                filtering out non-speech, 3 is the most aggressive. 
+        dst_dir (str): path to dst for saving json and chunks
+
+    Output:
+        The voice activity that is detected is saved as a json. This is useful for
+        later annotation, but you may prefer to convert the json to a csv.
+    """
+    audio, sample_rate = read_wave(src_audio)
+    vad = webrtcvad.Vad(int(aggressiveness))
     frames = frame_generator(30, audio, sample_rate)
     frames = list(frames)
     segments = vad_collector(sample_rate, 30, 300, vad, frames)
-    chunk_folder = f"{args[1][:-10]}/chunks"
+    chunk_folder = os.path.join(dst_dir, "chunks")
     if not os.path.exists(chunk_folder):
         os.makedirs(chunk_folder)
     record = []
@@ -174,8 +182,36 @@ def main(args):
         }
         record.append(instance)
         write_wave(path, segment, sample_rate)
-    with open(f"{args[1][:-10]}/utterances.json", "w") as outfile:
+    p = os.path.join(dst_dir, "utterances.json")
+    with open(p, "w") as outfile:
         json.dump({"utterances": record}, outfile)
+    return
+
+
+def parse_args(args):
+    parser = argparse.ArgumentParser(
+        description="detect voice activity in an audio file",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "audio_file",
+        default="/media/chris/M2/1-Raw_Data/Videos/1/audio/audio.wav",
+        help="where to find input wav file",
+    )
+    parser.add_argument(
+        "agressiveness",
+        default=0,
+        help="How aggressively to consider voice activity",
+    )
+    parser.add_argument("dst_dir", help="where to place the json and chunks")
+
+    args = parser.parse_args()
+    return args
+
+
+def main(args):
+    args = parse_args(args)
+    get_voice_activity(args.audio_file, args.aggressiveness, args.dst_dir)
 
 
 if __name__ == "__main__":

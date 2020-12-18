@@ -7,13 +7,35 @@ import sys
 
 
 class Windowing:
+    """
+    Basic wrapper on pandas for windowing and subsampling a dataset.
+
+    The windowing class is intended to provide a convenient wrapper on pandas rolling
+    functionality. There is currently a distinction between two types of features:
+        - continous features: produce mean and variance across the window.
+        - binary features: produce any of [median, mode, max]
+
+    feature types are specified in [example]_config.yml which lists the headers of
+    columns according to the type of data contained (continuous or binary).
+
+    returns:
+        windowed dataframe without the original features.
+
+    """
+
     def __init__(self, csv, config="./windowing_config.yml"):
+        """[summary]
+
+        Args:
+            csv ([type]): [description]
+            config (str, optional): [description]. Defaults to "./windowing_config.yml".
+        """
         with open(config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
         self.df = pd.read_csv(csv)
         print(self.df)
 
-    def window_dataframe(self, window_size=30, step=10):
+    def window_dataframe(self, window_size=30, step=10, binary_mode="median"):
         # Contains Cols = 1 iff exists a 1 in the window
         # Mode Cols: take most common value in the window
         # All other cols: if NaN for majority of window = NaN
@@ -23,7 +45,7 @@ class Windowing:
         if self.config["float_features"]:
             self.window_float(window_size)
         if self.config["binary_features"]:
-            self.window_binary(window_size, mode="median")
+            self.window_binary(window_size, mode=binary_mode)
 
         self.windowed_df = self.windowed_df.loc[
             self.windowed_df.index[np.arange(len(self.windowed_df)) % step == 1]

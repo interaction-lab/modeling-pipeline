@@ -1,14 +1,40 @@
-# this is a python2 script
-# Extract acoustic LLDs (MFCC, GeMAPS, and eGeMAPS sets from openSMILE)
-# Output: csv files
-
 import os
 import sys
 import time
 import argparse
 
 
-def get_configs(feature_type, path_config):
+def get_opensmile_features(paths: dict, feature_types: list = ["gemaps"]):
+    """High level runner for opensmile
+
+    TODO: increase flexibility of use. Fix egemaps?
+
+    Args:
+        paths (dict): contains paths to config, audio_file, csv_dir, and smile_exe
+        feature_types (list, optional): [description]. Defaults to ["gemaps"].
+    """
+    # LOOP THROUGH THE DIFFERENT FEATURE SETS YOU WANT EXTRACTED
+    for feature_type in feature_types:
+        print(f"extracting for {feature_type}")
+        _run_smile(
+            _get_configs(feature_type, paths["config"]),
+            paths["audio_file"],
+            paths["csv_dir"],
+            paths["smile_exe"],
+        )
+    return
+
+
+def _get_configs(feature_type, path_config):
+    """Sorts through configs for different feature sets you can extract with opensmile
+
+    Args:
+        feature_type ([type]): Which feature set to use
+        path_config ([type]): Path to bas configs
+
+    Returns:
+        [type]: everything needed to _run_opensmile()
+    """
     if feature_type == "mfcc":
         folder_output = "mfcc_features"  # output folder
         conf_smileconf = "".join(
@@ -57,8 +83,18 @@ def get_configs(feature_type, path_config):
     return folder_output, conf_smileconf, opensmile_options, output_option
 
 
-def run_smile(configs, audio_file, output_dir_path, opensmile_exe_path):
+def _run_smile(configs, audio_file, output_dir_path, opensmile_exe_path):
+    """Call to opensmile executable with args from _get_configs
+
+    Args:
+        configs ([type]): [description]
+        audio_file ([type]): [description]
+        output_dir_path ([type]): [description]
+        opensmile_exe_path ([type]): [description]
+    """
+    # unload the configs
     output_file, conf_smileconf, opensmile_options, output_option = configs
+
     if not os.path.exists(output_dir_path):
         os.mkdir(output_dir_path)
 
@@ -80,9 +116,9 @@ def run_smile(configs, audio_file, output_dir_path, opensmile_exe_path):
     return
 
 
-def main(args):
+def parse_args(args):
     parser = argparse.ArgumentParser(
-        description="Produce OpenSmile Features from audio",
+        description="Produce OpenSmile Features from audio file",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("audio_file", help="where to find input wav file")
@@ -90,30 +126,31 @@ def main(args):
     parser.add_argument(
         "openSMILE_dir",
         default="/home/chris/Programs/opensmile-2.3.0",
-        help="where to find input wav file",
+        help="where to find opensmile executable",
     )
     args = parser.parse_args()
-    print(args)
+    return args
+
+
+def main(args):
+    args = parse_args(args)
 
     # MODIFY THESE BASED ON YOUR SYSTEM
     # feature_types = ["egemaps", "gemaps"]
     feature_types = ["gemaps"]
-    smile_exe_path = os.path.join(
-        args.openSMILE_dir, "SMILExtract"
-    )  # MODIFY this path to the folder of the SMILExtract (version 2.3) executable
-    config_path = os.path.join(
-        args.openSMILE_dir, "config/"
-    )  # MODIFY this path to the config folder of opensmile 2.3 - no POSIX here on cygwin (windows)
 
-    # LOOP THROUGH THE DIFFERENT FEATURE SETS YOU WANT EXTRACTED
-    for feature_type in feature_types:
-        print(f"extracting for {feature_type}")
-        run_smile(
-            get_configs(feature_type, config_path),
-            args.audio_file,
-            args.csv_dir,
-            smile_exe_path,
-        )
+    paths = {
+        "audio_file": args.audio_file,
+        "csv_dir": args.csv_dir
+    }
+
+    # MODIFY this path to the folder of the SMILExtract (version 2.3) executable
+    paths["smile_exe"] = os.path.join(args.openSMILE_dir, "SMILExtract")
+
+    # MODIFY this path to the config folder of opensmile 2.3 - no POSIX here on cygwin (windows)
+    paths["config"] = os.path.join(args.openSMILE_dir, "config/")
+
+    get_opensmile_features(paths, feature_types)
 
 
 if __name__ == "__main__":

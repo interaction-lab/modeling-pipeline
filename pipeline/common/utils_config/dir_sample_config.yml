@@ -1,0 +1,48 @@
+# The directory pattern specifies the configuration for creating
+# a list of directories. This allows the directories to match either
+# the windows or mac/linux file structure.
+# Think of the dir_pattern as a list path that can have variable names.
+dir_pattern:
+  - /
+  - media
+  - chris
+  - M2
+  - 1-Raw_Data
+  - Videos
+  - dir1
+  - audio
+  - dir2
+
+# The substitutes match items in the dir_pattern and are replaced
+# in a combinatorial fashion
+substitutes:
+  dir1:
+    - 1
+    - 2
+    - 3
+    # - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 11
+    - 12
+    - 13
+    - 14
+    - 15
+    - 16
+    - 17
+    - 18
+    - 19
+    - 21
+    - 22
+    - 23
+    - 24
+    - 25
+    - 26
+    - 27
+  dir2:
+    - left
+    - right
+    - center

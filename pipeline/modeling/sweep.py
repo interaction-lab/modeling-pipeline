@@ -8,8 +8,8 @@ import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
 
-from data_utils import MyDataset, DataLoading, timeit
-from model_training import ModelTraining
+from .data_utils import MyDataset, DataLoading, timeit
+from .model_training import ModelTraining
 
 
 def log_reports(metrics, columns):
