@@ -232,6 +232,15 @@ for p in ["left", "right", "center"]:
     df_list.append(LOADED_DF)
 
 LOADED_DF = pd.concat(df_list, axis=0)
+
+# LOADED_DF["finishing"] = float(0)
+# for i in tqdm(range(len(LOADED_DF) - closing_window)):
+#     if LOADED_DF["speaking"].iloc[i]:
+#         for j in range(closing_window):
+#             if not LOADED_DF["speaking"].iloc[i + j]:
+#                 LOADED_DF["finishing"].iloc[i] = float(1)
+#                 continue
+
 # print(LOADED_DF)
 
 # Record experimental details for Neptune
@@ -245,12 +254,18 @@ params = {
     "normalize": NORMALIZE,
 }
 tags = [
-    EXP_NAME,
-    # f"{len(data_loader.config['sessions'])} sess",
-    "not-stat-windowed",
     COMPUTER,
     FEATURES,
+    str(CLASSES),
+    f"{NUM_TRIALS} Trials",
+    f"{data_loader.num_examples} Sessions",
 ]
+if OVERLAP:
+    tags.append("Overlap")
+if NORMALIZE:
+    tags.append("Normalized")
+if KEEP_UNWINDOWED_FEATURES:
+    tags.append("Keep-Unwindowed")
 
 # Start up Neptune, init call takes the name of the sandbox
 # Neptune requires that you have set your api key in the terminal

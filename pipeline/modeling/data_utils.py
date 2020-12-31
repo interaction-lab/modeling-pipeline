@@ -102,18 +102,6 @@ class LoadDF:
         df.to_feather(feather_path)
         return df, self.data_hash
 
-    @timeit
-    def get_turn_ending(self, df, closing_window=45):
-        # df["finishing"] = float(0)
-        # for i in tqdm(range(len(df) - closing_window)):
-        #     if df["speaking"].iloc[i]:
-        #         for j in range(closing_window):
-        #             if not df["speaking"].iloc[i + j]:
-        #                 df["finishing"].iloc[i] = float(1)
-        #                 continue
-        # return df
-        pass
-
 
 class TransformDF:
     def __init__(self):
