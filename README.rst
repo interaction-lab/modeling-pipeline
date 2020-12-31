@@ -7,13 +7,13 @@ This modeling pipeline is meant to take you from data collection all the way thr
 Please see examples/walkthrough/ for a complete (step-by-step and end-to-end) walkthrough of this modeling process. 
 
 ## Philosophy
-=============
+-----------------
 
 We don't believe in reinventing the wheel and you shouldn't have to either. This pipeline is mostly a collection of external libraries cobbled together. Most of these are open and freely available, though some non essential elements are not. We try to always give credit where it is due, and we hope you will as well. 
 
 
 # Getting Started
-=================
+-----------------
 
 We recommend you use a virtual environment such as conda for managing dependencies. We recommend use of python==3.5+
 
@@ -31,13 +31,13 @@ Pipeline Organization
 ===================
 
 # Common
-========
+-----------------
 
 In keeping with the python centric focus of this repository, we provide some basic utility functions for manipulating files in the file_utils.py script. These utilities are structured to either take a configuration file or src and dst pair. Most of these are simple wrappers on bash (TODO check compatability with windows) commands for moving files or manipulating media with ffmpeg. The most important however is get_dirs_from_config(), which produces a file list from a configuration file. This should work in most operating systems as long as the path is specified correctly in the config file. This is very helpful for working with datasets that can be organized idiosyncraticly.
 
 
 # Feature Extraction
-====================
+-----------------
 
 Feature Extraction helps with taking audio and video and converting it into features that can be used for modeling. This is a mixture of wrappers around python libraries and seperate executables. 
 
@@ -57,7 +57,7 @@ Feature Extraction helps with taking audio and video and converting it into feat
 
 
 # Annotation
-=============
+-----------------
 
  - Python Based Annotation
 
@@ -69,7 +69,7 @@ Feature Extraction helps with taking audio and video and converting it into feat
 
 
 # Modeling
-=============
+-----------------
 
 This is based on PyTorch and sklearn.
 
@@ -115,10 +115,10 @@ This is based on PyTorch and sklearn.
 
 
 # New Sub Module Roadmap
-========================
+-----------------
 
 ## Data Collection Examples
-==========================
+-----------------
 
 Helpful examples for recording data during experiments for later use.
 
@@ -130,7 +130,7 @@ Helpful examples for recording data during experiments for later use.
 
 
 ## Analysis
-===========
+-----------------
 
 [ToDo] Visualizing and analyzing results 
 
@@ -151,14 +151,14 @@ Helpful examples for recording data during experiments for later use.
         \- Gensim
 
 ## Production
-=============
+-----------------
 
 [ToDo] Using Models in the real world
 
 
 
 # Contributing
-==============
+-----------------
 
 We welcome contributions. To contribute please make an issue requesting a change or a pull request with the expected change. To get started see the list below or any of the ToDo tags above.
 

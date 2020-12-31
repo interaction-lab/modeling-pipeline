@@ -179,13 +179,13 @@ COMPUTER = "cmb-laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
+    "gru",
+    "tcn",
     "tree",
     "forest",
     "xgb",
     "rnn",
     "lstm",
-    "gru",
-    "tcn",
 ]  # Not working: "mlp", "knn"
 
 NUM_TRIALS = 3  # Number of trials to search for each model
