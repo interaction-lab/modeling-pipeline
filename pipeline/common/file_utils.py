@@ -5,6 +5,23 @@ import fnmatch
 import yaml
 
 
+def ensure_destination_exists(dst_file_path: str):
+    """Creates a folder for the file
+
+    Will create the destination folder from the given file path without the
+    the file name. Use with care as this could have unintended consequences
+    if you accidently use a partial file path.
+    TODO: add some checks that make sense to the path being created
+
+    Args:
+        dst_file_path (str): Full path of a file
+    """
+    dst_dir = "/".join(dst_file_path.split('/')[:-1])
+    if not os.path.isdir(dst_dir):
+        pathlib.Path(dst_dir).mkdir(parents=True, exist_ok=True)
+    return
+
+
 def move_dir(src: str, dst: str, pattern: str = '*'):
     """Move files from src to dst if they match patterns
 
@@ -14,8 +31,10 @@ def move_dir(src: str, dst: str, pattern: str = '*'):
         pattern (str, optional): pattern describing files to match (e.g. *.csv). Defaults to '*'.
     """
 
+    # this is a useful line for making directories if they don't exist
     if not os.path.isdir(dst):
         pathlib.Path(dst).mkdir(parents=True, exist_ok=True)
+
     for f in fnmatch.filter(os.listdir(src), pattern):
         shutil.move(os.path.join(src, f), os.path.join(dst, f))
     return
@@ -25,7 +44,7 @@ def get_dirs_from_config(config: str = "./config/dir_sample_config.yml"):
     """Creates a list of directory paths from a config.yml
 
     Args:
-        config (str, optional): config path. Must contain 'dir_pattern' and 
+        config (str, optional): config path. Must contain 'dir_pattern' and
         'substitutes' keys. Defaults to "./config/dir_sample_config.yml".
 
     Returns:
@@ -86,10 +105,11 @@ def zip_files(files_to_zip: list, dst_path: str):
     Useful for compressing for upload or download
 
     Args:
-        files_to_zip (list): list containing either a single file/dir or 
+        files_to_zip (list): list containing either a single file/dir or
         multiple files or directories
         dst_path (str): path of output zip file
     """
+    ensure_destination_exists(dst_path)
     sys_call = f"zip -r {dst_path} {' '.join(files_to_zip)}"
     os.popen(sys_call)
     return
@@ -103,7 +123,24 @@ def resample_audio(src_audio: str, dst_audio: str, rate: int):
         dst_audio (str): dst audio file path
         rate (int): new sample rate for dst audio
     """
+    ensure_destination_exists(dst_audio)
     sys_call = f"ffmpeg -i {src_audio} -ar {rate} {dst_audio}"
+    os.popen(sys_call)
+    return
+
+
+def audio_from_video(src_video: str, dst_audio: str):
+    """Pull audio from source mp4 to destination wav.
+
+    to compress the audio into mp3 add the "-map 0:a" before the
+    destination file name. The
+
+    Args:
+        src_video (str): Path to src video
+        dst_audio (str): Path to dst audio
+    """
+    ensure_destination_exists(dst_audio)
+    sys_call = f"ffmpeg -i {src_video} -ac 1 {dst_audio}"
     os.popen(sys_call)
     return
 

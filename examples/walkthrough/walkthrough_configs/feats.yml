@@ -1,0 +1,14 @@
+dir_pattern:
+  - /
+  - home
+  - chris
+  - coding
+  - usc
+  - modeling-pipeline
+  - data
+  - features
+  - num
+
+substitutes:
+  num:
+    - 1

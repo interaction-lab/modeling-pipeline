@@ -10,7 +10,6 @@ dir_pattern:
   - 1-Raw_Data
   - Videos
   - dir1
-  - audio
   - dir2
 
 # The substitutes match items in the dir_pattern and are replaced
@@ -43,6 +42,6 @@ substitutes:
     - 26
     - 27
   dir2:
-    - left
-    - right
-    - center
+    - left.mp4
+    - right.mp4
+    - center.mp4

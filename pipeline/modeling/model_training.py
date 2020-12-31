@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torch import optim
 import pandas as pd
 import numpy as np
-from data_utils import MyDataset, DataLoading, timeit
+from .data_utils import TimeSeriesDataset, LoadDF, timeit
 
 from sklearn.utils.class_weight import compute_sample_weight
 from sklearn.neural_network import MLPClassifier
@@ -25,7 +25,7 @@ from sklearn.metrics import (
 )
 
 import xgboost as xgb
-from model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
+from .model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
 
 import matplotlib.pyplot as plt
 
@@ -326,7 +326,7 @@ class ModelTraining:
 
     def fit_sklearn_classifier(self):
         print(f"Fitting Sklearn Classifier - {self.params['model']}")
-        X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_dataset()
+        X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_sk_dataset()
         sample_weights = compute_sample_weight(class_weight="balanced", y=Y_train)
 
         self.model.fit(X_train, Y_train, sample_weight=sample_weights)
@@ -337,7 +337,7 @@ class ModelTraining:
         self.metrics["test"], test_results_df, test_result_summary = self.test_fit(
             X_test, Y_test, "test"
         )
-        print(f"Test results:")
+        print(f"\nTest results:")
         print(test_results_df)
 
         return val_result_summary
@@ -403,19 +403,53 @@ class ModelTraining:
         df = pd.DataFrame([values], columns=columns)
         return values, df
 
-    def plot_metrics(self):
-        df_train = pd.DataFrame(self.metrics["train"], columns=self.columns)
-        df_val = pd.DataFrame(self.metrics["val"], columns=self.columns)
+    def plot_metrics(self, verbose=False):
+        for k in ["train", "val", "test"]:
+            if k is "test" or self.params["model"] in [
+                "forest",
+                "tree",
+                "mlp",
+                "knn",
+                "xgb",
+            ]:
+                df = pd.DataFrame([self.metrics[k]], columns=self.columns)
+            else:
+                df = pd.DataFrame(self.metrics[k], columns=self.columns)
+            # print(k)
+            # print(df)
+            metrics_to_log = [
+                "auROC",
+                "AP",
+                "support",
+                "precision",
+                "recall",
+                "f1-score",
+                "loss",
+            ]
+            for c in self.columns:
+                for m in metrics_to_log:
+                    if m in c:
+                        if verbose:
+                            print(f"{k}_{c}", df[c].iloc[-1])
+                        elif "auROC" in c:
+                            print(f"{k}_{c}", df[c].iloc[-1])
 
-        if df_val.shape[1] == 1:
+        print("create graphs")
+        if self.params["model"] in ["forest", "tree", "mlp", "knn", "xgb"]:
+            df_train = pd.DataFrame([self.metrics["train"]], columns=self.columns)
+            df_val = pd.DataFrame([self.metrics["val"]], columns=self.columns)
+        else:
+            df_train = pd.DataFrame(self.metrics["train"], columns=self.columns)
+            df_val = pd.DataFrame(self.metrics["val"], columns=self.columns)
+
+        print(df_val.shape)
+        if df_val.shape[0] == 1:
+            # Don't plot single point graphs
             return
         else:
             columns_to_plot = [
                 c for c in df_train.columns if ("auROC" in c or "AP" in c)
             ]
-            # val_columns_to_plot = [c for c in df_val.columns]
-            # Support and loss
-
             # Create a figure showing metrics progress while training
             fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
             df_train[columns_to_plot].plot(ax=axes[0])
@@ -425,20 +459,22 @@ class ModelTraining:
             df_val[columns_to_plot].plot(ax=axes[1])
             df_val["loss"].plot(ax=axes[1], secondary_y=True, color="black")
             axes[1].set_title("val")
+
             plt.show()
             # experiment.log_image("diagrams", fig)
+        return
 
 
 if __name__ == "__main__":
     print("Starting")
     model_params = {}
-    data_loader = DataLoading()
+    data_loader = LoadDF()
     df = data_loader.get_all_sessions()
 
     window = 5
     # classes = ["speaking", "finishing"]
     classes = ["finishing"]
-    data = MyDataset(df, window=window, overlap=False, labels=classes)
+    data = TimeSeriesDataset(df, window=window, overlap=False, labels=classes)
 
     model = "tcn"
     if model in ["tcn", "rnn", "gru", "lstm"]:

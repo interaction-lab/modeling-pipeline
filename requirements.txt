@@ -27,6 +27,5 @@ neptune-contrib
 optuna
 
 opensmile
+librosa
 tqdm
-hashlib
-contextlib

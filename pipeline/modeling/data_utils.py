@@ -1,30 +1,24 @@
-import pandas as pd
-import json
+from os.path import join, exists
 import yaml
 
-from os import listdir
-from os.path import isfile, join, exists
-import sys
+import torch
+from torch.utils.data import Dataset
+import pandas as pd
+import numpy as np
+
 import time
 import itertools
-import timeit
+from tqdm import tqdm
+
+# import timeit
 import math
 import random
 import hashlib
-from tqdm import tqdm
 
-import numpy as np
-
-import torch
-from torch.utils.data import Dataset, DataLoader
-from torch import from_numpy
-
-from sklearn.preprocessing import StandardScaler
-from pandas_profiling import ProfileReport
-
+# from sklearn.preprocessing import StandardScaler
 
 # Needed to reproduce
-random.seed(101)
+random.seed(0)
 torch.manual_seed(0)
 np.random.seed(0)
 
@@ -44,194 +38,278 @@ def timeit(method):
     return timed
 
 
-class DataLoading:
+class LoadDF:
     def __init__(self, config="./config/data_loader_config.yml"):
         with open(config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
         # We name our compressed datset using a hash of the features so we
         #   can reload it without having to recreate it from the csvs
-        self.data_hash = hashlib.sha224(
-            (str(self.config["sessions"]) + str(self.config["features"])).encode(
-                "UTF-8"
-            )
-        ).hexdigest()
+        self.data_hash = hashlib.sha224((str(self.config)).encode("UTF-8")).hexdigest()
 
-        print(self.data_hash)
+        print("Configuration hash:", self.data_hash)
+        self.get_file_paths()
 
-    def get_individual_session(self, session_num, position):
-        assert session_num in self.config["sessions"]
-        data_frames = []
+    def get_file_paths(self):
+        self.feature_files = {}
 
         for fs in self.config["feature_sets"]:
-            for f in self.config["feature_files"][fs]:
-                file_name = join(self.config["data_dir"], fs, str(session_num), f)
-                print(f"reading {file_name}")
+            config = self.config["feature_files"][fs]
+            dir_list = [join(*config["dir_pattern"])]
 
-                if "Video-OpenFace" in fs and position not in f:
-                    print("not reading")
-                    continue
-                elif "Annotation-Turns" in fs:
-                    print(f"Annotation-Turns: {fs}, {position}")
-                    annotations = pd.DataFrame(
-                        {"speaking": pd.read_csv(file_name)[position]}
-                    )
-                    data_frames.append(annotations)
-                else:
-                    print(f"reading {fs}")
-                    data_frames.append(
-                        pd.read_csv(file_name)[self.config["features"][fs]]
-                    )
-        return pd.concat(data_frames, axis=1)
+            for sub_dir, subs in config["substitutes"].items():
+                assert (
+                    sub_dir in config["dir_pattern"]
+                ), f"substitution ({sub_dir}) must have a target match in the path {config['dir_pattern']}"
 
-    @timeit
-    def get_group_session(self, session_num):
+                new_dir_list = []
+                for p in dir_list:
+                    for new_dir in subs:
+                        new_dir_list.append(p.replace(sub_dir, str(new_dir), 1))
 
-        group = [
-            self.get_individual_session(session_num, p)
-            for p in self.config["positions"]
-        ]
-        return pd.concat(group, axis=0)
+                dir_list = new_dir_list
+                self.num_examples = len(dir_list)
 
-    @timeit
-    def get_all_sessions(self):
-        # All sessions are either loaded if they have already been created
-        #   or created from individual sessions. If the sessions are being recreated
-        #   they are saved to save time on future loading.
-        print("Loading Sessions")
-        if exists(f"data/{self.data_hash}.feather"):
-            df = pd.read_feather(f"data/{self.data_hash}.feather")
-        else:
-            sessions = [self.get_group_session(i) for i in self.config["sessions"]]
+            self.feature_files[fs] = dir_list
+        print("Files to load: ")
+        print(self.feature_files)
+        for i in self.feature_files.values():
+            assert (
+                len(i) == self.num_examples
+            ), "   all feature sets must have the same number of files"
 
-            df = pd.concat(sessions, axis=0).reset_index()
+    def load_all_dataframes(self, feather_dir="./data/feathered_data"):
+        all_data_frames = []
+        for i in range(self.num_examples):
+            i_data_frames = []
 
-            df = self.get_turn_ending(
-                df, closing_window=self.config["features"]["closing_window"]
-            )
+            for fs, file_lists in self.feature_files.items():
+                cols = self.config["features"][fs]
+                i_data_frames.append(pd.read_csv(file_lists[i])[cols])
 
-            df = df.fillna(0)
+            print("Shape of loaded frames:")
+            for p in i_data_frames:
+                print(p.shape)
 
-            df.to_feather(f"data/{self.data_hash}.feather")
-        return df
+            all_data_frames.append(pd.concat(i_data_frames, axis=1))
+        df = pd.concat(all_data_frames, axis=0)
+        print("Final shape: ", df.shape)
+        df = df.fillna(0)
+        df.reset_index(inplace=True)
+        df.to_feather(f"{feather_dir}/{self.data_hash}.feather")
+        return df, self.data_hash
 
     @timeit
     def get_turn_ending(self, df, closing_window=45):
-        df["finishing"] = float(0)
-        for i in tqdm(range(len(df) - closing_window)):
-            if df["speaking"].iloc[i]:
-                for j in range(closing_window):
-                    if not df["speaking"].iloc[i + j]:
-                        df["finishing"].iloc[i] = float(1)
-                        continue
+        # df["finishing"] = float(0)
+        # for i in tqdm(range(len(df) - closing_window)):
+        #     if df["speaking"].iloc[i]:
+        #         for j in range(closing_window):
+        #             if not df["speaking"].iloc[i + j]:
+        #                 df["finishing"].iloc[i] = float(1)
+        #                 continue
+        # return df
+        pass
 
-        return df
 
-
-class MyDataset(Dataset):
-    @timeit
-    def __init__(
-        self, df, normalize=True, overlap=False, labels=["speaking"],
-    ):
-        self.status = "training"
-        # Check for invalid features
-        assert df.isin([np.nan, np.inf, -np.inf]).sum().sum() == 0
-
-        self.labels = df[labels]
-        self.df = df.drop(["index"], axis=1)
-        self.df = self.df.drop(["speaking", "finishing"], axis=1)
-
-        # Windowing parameters
-        self.overlap = overlap
-
-        # Normalize the data
-        if normalize:
-            # Fit scalar on train
-            # self.scaler = StandardScaler()
-            self.normalize_dataset()
-
-        self.setup_dataset()
+class TransformDF:
+    def __init__(self):
         return
 
     @timeit
-    def normalize_dataset(self):
+    def normalize_dataset(self, df, columns_to_exclude=[]):
+        # self.scaler = StandardScaler()
         print("Normalizing df columns")
-        for c in tqdm(self.df.columns):
-            if c not in ["finishing", "speaking"]:
-                self.df[c] = (self.df[c] - self.df[c].mean()) / self.df[c].std()
+        self.columns = df.columns
+        for c in tqdm(df.columns):
+            if c not in columns_to_exclude:
+                df[c] = (df[c] - df[c].mean()) / df[c].std()
+        return df
+
+    @timeit
+    def apply_rolling_window(
+        self, df, window_size, keep_old_features, feature_config, labels
+    ):
+        print("Applying rolling window, size: ", window_size)
+        if keep_old_features:
+            windowed_df = df
+        else:
+            windowed_df = df[labels]
+
+        if window_size == 1:
+            return df
+
+        with open(feature_config) as f:
+            self.config = yaml.load(f, Loader=yaml.FullLoader)
+
+        if self.config["mean_features"]:
+            mean_cols = [f + "_mean" for f in self.config["mean_features"]]
+
+            windowed_df[mean_cols] = (
+                df[self.config["mean_features"]]
+                .rolling(window_size, min_periods=1)
+                .mean()
+            )
+        if self.config["variance_features"]:
+            var_cols = [f + "_var" for f in self.config["variance_features"]]
+            windowed_df[var_cols] = (
+                df[self.config["variance_features"]]
+                .rolling(window_size, min_periods=1)
+                .var()
+            )
+        if self.config["median_features"]:
+            median_cols = [f + "_median" for f in self.config["median_features"]]
+
+            windowed_df[median_cols] = (
+                df[self.config["median_features"]]
+                .rolling(window_size, min_periods=1)
+                .median()
+            )
+        if self.config["mode_features"]:
+            mode_cols = [f + "_mode" for f in self.config["mode_features"]]
+
+            windowed_df[mode_cols] = (
+                df[self.config["mode_features"]]
+                .rolling(window_size, min_periods=1)
+                .mode()
+            )
+        if self.config["max_features"]:
+            max_cols = [f + "_max" for f in self.config["max_features"]]
+
+            windowed_df[max_cols] = (
+                df[self.config["max_features"]]
+                .rolling(window_size, min_periods=1)
+                .max()
+            )
+        windowed_df = windowed_df.fillna(0)
+        return windowed_df
+
+    @timeit
+    def sub_sample(self, df, step):
+        print(f"Old shape: {df.shape} (step {step})")
+        if step != 1:
+            df = df.loc[df.index[np.arange(len(df)) % step == 1]]
+        print(f"New shape: {df.shape}")
+        return df
+
+
+class TimeSeriesDataset(Dataset):
+    @timeit
+    def __init__(
+        self,
+        df,
+        overlap=False,
+        shuffle=True,
+        labels=["speaking"],
+        data_hash="",
+    ):
+        """Produces a dataset that can be used with pytorch or sklearn
+
+        Args:
+            df ([type]): [description]
+            normalize (bool, optional): [description]. Defaults to True.
+            overlap (bool, optional): [description]. Defaults to False.
+            shuffle (bool, optional): [description]. Defaults to True.
+            labels (list, optional): [description]. Defaults to ["speaking"].
+            data_hash (str, optional): [description]. Defaults to "".
+        """
+
+        # Check for invalid features
+        assert df.isin([np.nan, np.inf, -np.inf]).sum().sum() == 0
+        if "index" in df.columns:
+            df = df.drop(["index"], axis=1)
+
+        self.labels = df[labels]
+        self.df = df.drop(labels, axis=1)
+
+        # It is not recommended to shuffle if overlapping here
+        self.status = "training"
+        self.overlap = overlap
+        self.shuffle = shuffle
+        self.data_hash = data_hash
+        return
+
+    @timeit
+    def setup_dataset(self, window=1):
+        self.window = window
+
+        if self.overlap:
+            self.indices = list(range(len(self.df) - self.window))
+        else:
+            self.indices = list(range(0, len(self.df) - (self.window - 1), self.window))
+
+        if self.shuffle:
+            random.shuffle(self.indices)
+
+        self.split_dataset()
+
+        return
 
     @timeit
     def split_dataset(self, start=2, k=7):
         # Create indices for splitting the dataset
-        ind_l = len(self.indices)
-        fold_size = math.floor(ind_l / k)
+        # TODO Fix running training with actual cross validation
+        fold_size = math.floor(len(self.indices) / k)
 
-        split_points = list(range(0, ind_l, fold_size - 1))
+        split_points = list(range(0, len(self.indices), fold_size - 1))
+
         folds = [
-            self.indices[split_points[i] : min(ind_l, split_points[i + 1])]
+            self.indices[split_points[i] : min(len(self.indices), split_points[i + 1])]
             for i in range(k)
         ]
 
         self.test_ind = folds.pop(start)
         self.val_ind = folds.pop(start % (k - 1))
-        flatten = itertools.chain.from_iterable
 
+        flatten = itertools.chain.from_iterable
         self.train_ind = list(flatten(folds))
 
+        self.weight_labels()
         return
 
     def weight_labels(self):
         # Find label balance
         self.weights = []
         for c in self.labels.columns:
-            perc = self.labels[c].sum() / len(self.labels)
-            print(f"{c} {perc} % of the time overall")
 
+            perc = self.labels[c].sum() / len(self.labels)
             train_perc = self.labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
-            print(f"{c} {train_perc} % of the time in train")
+            val_perc = self.labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
+            test_perc = self.labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
+
+            # We only use training class balance for determining weights
             self.weights.append(1 / train_perc)
 
-            val_perc = self.labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
-            print(f"{c} {val_perc} % of the time in val")
-
-            test_perc = self.labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
-            print(f"{c} {test_perc} % of the time in test")
-
-    @timeit
-    def setup_dataset(self, window=1):
-        print("setting up dataset")
-        # Split into train/val/test
-        self.window = window
-        if self.overlap:
-            self.indices = list(range(len(self.df) - self.window))
-        else:
-            self.indices = list(range(0, len(self.df) - (self.window - 1), self.window))
-
-        self.split_dataset()
-        self.weight_labels()
-
-        return
+            print(f"\n{c} {perc}% of the time overall (len={len(self.labels)})")
+            print(f"{c} {train_perc}% of the time in train (len={len(self.train_ind)})")
+            print(f"{c} {val_perc}% of the time in val (len={len(self.val_ind)})")
+            print(f"{c} {test_perc}% of the time in test (len={len(self.test_ind)}\n)")
 
     @timeit
-    def get_dataset(self):
+    def get_sk_dataset(self, feather_dir="./data/feathered_data"):
         assert self.overlap is False, "Overlap must be false for sklearn"
 
         # Reuse datasets for faster sklearn performance
-        if exists(f"data/{self.data_hash}-{self.window}-sk.feather"):
+        # if exists(f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"):
+        if False:
             self.sk_df = pd.read_feather(
-                f"data/{self.data_hash}-{self.window}-sk.feather"
+                f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"
             )
         else:
             # Flatten dataframe by window for sklearn
             self.sk_df = pd.concat(
                 [
-                    pd.DataFrame(self.df.values[w :: self.window],)
+                    pd.DataFrame(
+                        self.df.values[w :: self.window],
+                    )
                     for w in range(self.window)
                 ],
                 axis=1,
             )
             self.sk_df.columns = [f"c-{c}" for c in range(len(self.sk_df.columns))]
-            self.sk_df.to_feather(f"data/{self.data_hash}-{self.window}-sk.feather")
+            self.sk_df.to_feather(
+                f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"
+            )
 
         new_val_ind = [int(i / self.window) for i in self.val_ind]
         X_val = np.array(self.sk_df.values[new_val_ind])

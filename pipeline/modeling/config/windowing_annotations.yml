@@ -1,9 +1,0 @@
-binary_features:
-  - left
-  - right
-  - center
-  - bot
-
-integer_features:
-
-float_features:

@@ -1,0 +1,17 @@
+dir_pattern:
+  - /
+  - home
+  - chris
+  - coding
+  - usc
+  - modeling-pipeline
+  - data
+  - audio
+  - num
+  - file_name
+
+substitutes:
+  num:
+    - 1
+  file_name:
+    - short_example.wav

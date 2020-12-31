@@ -1,0 +1,124 @@
+feature_sets:
+  - Audio-Librosa
+  # - Audio-Opensmile
+  - Annotation-Speaker
+
+feature_files:
+  Audio-Librosa:
+    dir_pattern:
+      - /
+      - home
+      - chris
+      - coding
+      - usc
+      - modeling-pipeline
+      - data
+      - features
+      - num
+      - librosa_audio.csv
+    substitutes:
+      num:
+        - 1
+  Audio-Opensmile:
+    dir_pattern:
+      - /
+      - home
+      - chris
+      - coding
+      - usc
+      - modeling-pipeline
+      - data
+      - features
+      - num
+      - opensmile_audio.csv
+    substitutes:
+      num:
+        - 1
+  Annotation-Speaker:
+    dir_pattern:
+      - /
+      - home
+      - chris
+      - coding
+      - usc
+      - modeling-pipeline
+      - data
+      - va_output
+      - num
+      - speaking.csv
+    substitutes:
+      num:
+        - 1
+
+features:
+  Annotation-Speaker:
+    - speaking
+  Audio-Librosa:
+    - MFCC_0
+    - MFCC_1
+    - MFCC_2
+    - MFCC_3
+    - MFCC_4
+    - MFCC_5
+    - MFCC_6
+    - MFCC_7
+    - MFCC_8
+    - MFCC_9
+    - MFCC_10
+    - MFCC_11
+    - MFCC_12
+    - MFCC_13
+    - MFCC_14
+    - MFCC_15
+    - MFCC_16
+    - MFCC_17
+    - MFCC_18
+    - MFCC_19
+    - Chroma_0
+    - Chroma_2
+    - Chroma_3
+    - Chroma_4
+    - Chroma_5
+    - Chroma_7
+    - Chroma_9
+    - Mel_Spect_0
+    - Mel_Spect_1
+    - Mel_Spect_2
+    - Mel_Spect_4
+    - Mel_Spect_21
+    - Mel_Spect_30
+    - Mel_Spect_32
+    - Mel_Spect_34
+    - Mel_Spect_36
+    - Mel_Spect_38
+    - Mel_Spect_40
+    - Mel_Spect_41
+    - Mel_Spect_42
+    - Mel_Spect_44
+    - Mel_Spect_46
+    - Mel_Spect_50
+    - Mel_Spect_52
+    - Mel_Spect_54
+    - Mel_Spect_56
+    - Mel_Spect_58
+    - Mel_Spect_60
+    - Mel_Spect_65
+    - Mel_Spect_73
+    - Mel_Spect_91
+    - Spect_Contrast_0
+    - Spect_Contrast_1
+    - Spect_Contrast_2
+    - Spect_Contrast_3
+    - Spect_Contrast_4
+    - Spect_Contrast_5
+    - Spect_Contrast_6
+    - Rolloff_0
+  Audio-Opensmile:
+    - F0semitoneFrom27.5Hz_sma3nz
+    - jitterLocal_sma3nz
+    - shimmerLocaldB_sma3nz
+    - HNRdBACF_sma3nz
+    - logRelF0-H1-H2_sma3nz
+    - logRelF0-H1-A3_sma3nz
+    - F1frequency_sma3nz
+    - F1bandwidth_sma3nz

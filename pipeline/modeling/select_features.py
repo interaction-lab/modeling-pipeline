@@ -7,8 +7,7 @@ warnings.filterwarnings("ignore")
 
 
 def calculateCorr(df, corr_method, threshold):
-    """ Methods include 'pearson', 'kendall', 'spearman'
-    """
+    """Methods include 'pearson', 'kendall', 'spearman'"""
     # remove unrelated columns
     df = df.drop(columns=["frame", "confidence"], errors="ignore")
     n = len(df.columns)
@@ -69,14 +68,22 @@ def get_args() -> argparse.ArgumentParser:
     return parser.parse_args()
 
 
+def select_by_correlation(
+    feature_csv_path, correlation_method="pearson", threshold=0.7
+):
+    df = pd.read_csv(feature_csv_path)
+    selected_features = calculateCorr(df, correlation_method, threshold)
+    return selected_features
+
+
 def main():
     args = get_args()
 
-    df = pd.read_csv(args.input_filename)
-    selected_features = calculateCorr(df, args.corr_method, args.threshold)
+    selected_features = select_by_correlation(
+        args.input_filename, args.corr_method, args.threshold
+    )
     for c in selected_features:
         print(c)
-    # print(selected_features)
 
 
 if __name__ == "__main__":
