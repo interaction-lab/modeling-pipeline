@@ -79,6 +79,9 @@ class LoadDF:
             ), "   all feature sets must have the same number of files"
 
     def load_all_dataframes(self, feather_dir="./data/feathered_data"):
+        feather_path = f"{feather_dir}/{self.data_hash}.feather"
+        if exists(feather_path):
+            self.sk_df = pd.read_feather(feather_path)
         all_data_frames = []
         for i in range(self.num_examples):
             i_data_frames = []
@@ -96,7 +99,7 @@ class LoadDF:
         print("Final shape: ", df.shape)
         df = df.fillna(0)
         df.reset_index(inplace=True)
-        df.to_feather(f"{feather_dir}/{self.data_hash}.feather")
+        df.to_feather(feather_path)
         return df, self.data_hash
 
     @timeit
