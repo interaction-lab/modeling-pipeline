@@ -158,7 +158,7 @@ Helpful examples for recording data during experiments for later use.
 
 
 # Contributing
------------------
+==============
 
 We welcome contributions. To contribute please make an issue requesting a change or a pull request with the expected change. To get started see the list below or any of the ToDo tags above.
 
