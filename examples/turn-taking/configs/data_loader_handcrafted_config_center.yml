@@ -3,13 +3,14 @@ feature_sets:
   - Video-OpenFace
   - Annotation-Speaker
 
+
 feature_files:
   Audio-Librosa:
     dir_pattern:
       - /
-      - media
-      - chris
-      - M2
+      - home
+      - interaction
+      - data
       - 2-Processed_Data
       - Audio-Librosa
       - num
@@ -27,27 +28,27 @@ feature_files:
         - 10
         - 11
         - 12
-        # - 13
-        # # - 14
-        # - 15
-        # - 16
-        # - 17
-        # # - 18
-        # # - 19
-        # - 20
-        # - 21
-        # - 22
-        # - 23
-        # - 24
-        # - 25
-        # - 26
-        # - 27
+        - 13
+        # - 14
+        - 15
+        - 16
+        - 17
+        # - 18
+        # - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
   Video-OpenFace:
     dir_pattern:
       - /
-      - media
-      - chris
-      - M2
+      - home
+      - interaction
+      - data
       - 2-Processed_Data
       - Video-OpenFace
       - num
@@ -65,21 +66,21 @@ feature_files:
         - 10
         - 11
         - 12
-        # - 13
-        # # - 14
-        # - 15
-        # - 16
-        # - 17
-        # # - 18
-        # # - 19
-        # - 20
-        # - 21
-        # - 22
-        # - 23
-        # - 24
-        # - 25
-        # - 26
-        # - 27
+        - 13
+        # - 14
+        - 15
+        - 16
+        - 17
+        # - 18
+        # - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
       person:
         - center.csv
         # - right.csv
@@ -87,9 +88,9 @@ feature_files:
   Annotation-Speaker:
     dir_pattern:
       - /
-      - media
-      - chris
-      - M2
+      - home
+      - interaction
+      - data
       - 2-Processed_Data
       - Annotation-Turns
       - num
@@ -107,21 +108,21 @@ feature_files:
         - 10
         - 11
         - 12
-        # - 13
-        # # - 14
-        # - 15
-        # - 16
-        # - 17
-        # # - 18
-        # # - 19
-        # - 20
-        # - 21
-        # - 22
-        # - 23
-        # - 24
-        # - 25
-        # - 26
-        # - 27
+        - 13
+        # - 14
+        - 15
+        - 16
+        - 17
+        # - 18
+        # - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
 
 features:
   Annotation-Speaker:

@@ -128,7 +128,7 @@ def objective(trial):
         print("\n\n\n*****Transforming Dataset*******")
         tdf = TransformDF()
         rolling_window_size = trial.suggest_int("r_win_size", 1, 10)
-        step_size = trial.suggest_int("step_size", 1, 3)
+        step_size = trial.suggest_int("step_size", 2, 4)
 
         df = tdf.apply_rolling_window(
             LOADED_DF,
@@ -188,7 +188,7 @@ models_to_try = [
     "lstm",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 3  # Number of trials to search for each model
+NUM_TRIALS = 30  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 CLASSES = [
