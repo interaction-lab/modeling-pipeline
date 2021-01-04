@@ -81,7 +81,9 @@ class LoadDF:
     def load_all_dataframes(self, feather_dir="./data/feathered_data"):
         feather_path = f"{feather_dir}/{self.data_hash}.feather"
         if exists(feather_path):
-            self.sk_df = pd.read_feather(feather_path)
+            print("Reading from feather file")
+            df = pd.read_feather(feather_path)
+            return df, self.data_hash
         all_data_frames = []
         for i in range(self.num_examples):
             i_data_frames = []

@@ -3,6 +3,7 @@ import optuna
 import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
+from tqdm import tqdm
 
 import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
@@ -175,15 +176,15 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # *********************************************************
 EXP_NAME = "turn-taking"
-COMPUTER = "cmb-laptop"
+COMPUTER = "Exp-1"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    "gru",
+    "xgb",
     "tcn",
+    "gru",
     "tree",
     "forest",
-    "xgb",
     "rnn",
     "lstm",
 ]  # Not working: "mlp", "knn"
@@ -192,7 +193,7 @@ NUM_TRIALS = 30  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 CLASSES = [
-    "speaking"
+    "speaking", "finishing"
 ]  # List of class labels, e.g. ["speaking", "finishing"], ["speaking"], ["finishing"]
 WEIGHT_CLASSES = True  # Weight loss against class imbalance
 KEEP_UNWINDOWED_FEATURES = False
@@ -206,6 +207,7 @@ FEATURES = "handcrafted"  # handcrafted, pearson, etc.
 OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_WINDOW = 20  # Max window the model can look through
+CLOSING_WINDOW = 30
 # Rename to history? 'window' usage is confusing
 
 
@@ -233,13 +235,15 @@ for p in ["left", "right", "center"]:
 
 LOADED_DF = pd.concat(df_list, axis=0)
 
-# LOADED_DF["finishing"] = float(0)
-# for i in tqdm(range(len(LOADED_DF) - closing_window)):
-#     if LOADED_DF["speaking"].iloc[i]:
-#         for j in range(closing_window):
-#             if not LOADED_DF["speaking"].iloc[i + j]:
-#                 LOADED_DF["finishing"].iloc[i] = float(1)
-#                 continue
+if "finishing" in CLASSES:
+    print("******Adding in Finishing Label*****")
+    LOADED_DF["finishing"] = float(0)
+    for i in tqdm(range(len(LOADED_DF) - CLOSING_WINDOW)):
+        if LOADED_DF["speaking"].iloc[i]:
+            for j in range(CLOSING_WINDOW):
+                if not LOADED_DF["speaking"].iloc[i + j]:
+                    LOADED_DF["finishing"].iloc[i] = float(1)
+                    continue
 
 # print(LOADED_DF)
 
