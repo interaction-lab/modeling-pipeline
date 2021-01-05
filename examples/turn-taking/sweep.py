@@ -143,7 +143,7 @@ def objective(trial):
             rolling_window_size = trial.suggest_int("r_win_size", 1, 10)
             step_size = trial.suggest_int("step_size", 2, 4)
 
-            LOADED_DF = tdf.apply_rolling_window(
+            df = tdf.apply_rolling_window(
                 LOADED_DF,
                 rolling_window_size,
                 KEEP_UNWINDOWED_FEATURES,
@@ -153,16 +153,17 @@ def objective(trial):
         else:
             rolling_window_size = 1 # trial.suggest_int("r_win_size", 1, 10)
             step_size = 2 # trial.suggest_int("step_size", 2, 4)
-
+            df = LOADED_DF
+        
         print("\nStepping")
-        LOADED_DF = tdf.sub_sample(LOADED_DF, step_size)
+        df = tdf.sub_sample(df, step_size)
         if NORMALIZE:
-            LOADED_DF = tdf.normalize_dataset(LOADED_DF, CLASSES)
+            df = tdf.normalize_dataset(df, CLASSES)
 
         print("\nCreate Dataset")
 
         dataset = TimeSeriesDataset(
-            LOADED_DF, labels=CLASSES, shuffle=SHUFFLE, data_hash=FILE_HASH
+            df, labels=CLASSES, shuffle=SHUFFLE, data_hash=FILE_HASH
         )
 
         dataset.setup_dataset(window=model_params["window"])
