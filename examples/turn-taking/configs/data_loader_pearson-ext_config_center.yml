@@ -1,0 +1,263 @@
+feature_sets:
+  - Audio-Librosa
+  - Video-OpenFace
+  - Annotation-Speaker
+
+feature_files:
+  Audio-Librosa:
+    dir_pattern:
+      - /
+      - media
+      - chris
+      - M2
+      - 2-Processed_Data
+      - Audio-Librosa
+      - num
+      - audio_features.csv
+    substitutes:
+      num:
+        - 1
+        - 2
+        - 3
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+        # - 14
+        - 15
+        - 16
+        - 17
+        # - 18
+        # - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
+  Video-OpenFace:
+    dir_pattern:
+      - /
+      - media
+      - chris
+      - M2
+      - 2-Processed_Data
+      - Video-OpenFace
+      - num
+      - person
+    substitutes:
+      num:
+        - 1
+        - 2
+        - 3
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+        # - 14
+        - 15
+        - 16
+        - 17
+        # - 18
+        # - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
+      person:
+        - center.csv
+        # - right.csv
+        # - left.csv
+  Annotation-Speaker:
+    dir_pattern:
+      - /
+      - media
+      - chris
+      - M2
+      - 2-Processed_Data
+      - Annotation-Turns
+      - num
+      - turns.csv
+    substitutes:
+      num:
+        - 1
+        - 2
+        - 3
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+        # - 14
+        - 15
+        - 16
+        - 17
+        # - 18
+        # - 19
+        - 20
+        - 21
+        - 22
+        - 23
+        - 24
+        - 25
+        - 26
+        - 27
+
+features:
+  Annotation-Speaker:
+    # - left
+    # - right
+    - center
+  Audio-Librosa:
+    - MFCC_0
+    - MFCC_1
+    - MFCC_2
+    - MFCC_3
+    - MFCC_4
+    - MFCC_5
+    - MFCC_6
+    - MFCC_7
+    - MFCC_8
+    - MFCC_9
+    - MFCC_10
+    - MFCC_11
+    - MFCC_12
+    - MFCC_13
+    - MFCC_14
+    - MFCC_15
+    - MFCC_16
+    - MFCC_17
+    - MFCC_18
+    - MFCC_19
+    - Chroma_0
+    - Chroma_2
+    - Chroma_4
+    - Chroma_5
+    - Chroma_6
+    - Chroma_8
+    - Chroma_10
+    - Chroma_11
+    - Mel_Spect_0
+    - Mel_Spect_2
+    - Mel_Spect_4
+    - Mel_Spect_5
+    - Mel_Spect_97
+    - Mel_Spect_109
+    - Mel_Spect_127
+    - Spect_Contrast_0
+    - Spect_Contrast_1
+    - Spect_Contrast_2
+    - Spect_Contrast_3
+    - Spect_Contrast_4
+    - Spect_Contrast_5
+    - Spect_Contrast_6
+    - Rolloff_0
+  Video-OpenFace:
+    - gaze_0_x
+    - gaze_0_y
+    - gaze_0_z
+    - pose_Tx
+    - pose_Ty
+    - pose_Ry
+    - pose_Rz
+    - x_1
+    - x_8
+    - x_15
+    - x_21
+    - x_22
+    - x_48
+    - x_54
+    - x_62
+    - x_66
+    - y_1
+    - y_8
+    - y_15
+    - y_21
+    - y_22
+    - y_48
+    - y_54
+    - y_62
+    - y_66
+    - p_scale
+    - p_0
+    - p_2
+    - p_3
+    - p_4
+    - p_5
+    - p_6
+    - p_7
+    - p_8
+    - p_9
+    - p_10
+    - p_11
+    - p_12
+    - p_13
+    - p_14
+    - p_15
+    - p_16
+    - p_17
+    - p_19
+    - p_20
+    - p_21
+    - p_22
+    - p_23
+    - p_24
+    - p_25
+    - p_26
+    - p_27
+    - p_28
+    - p_29
+    - p_30
+    - p_31
+    - p_32
+    - p_33
+    - AU01_r
+    - AU02_r
+    - AU04_r
+    - AU05_r
+    - AU06_r
+    - AU07_r
+    - AU09_r
+    - AU10_r
+    - AU14_r
+    - AU15_r
+    - AU17_r
+    - AU20_r
+    - AU23_r
+    - AU25_r
+    - AU26_r
+    - AU45_r
+    - AU02_c
+    - AU04_c
+    - AU05_c
+    - AU07_c
+    - AU09_c
+    - AU10_c
+    - AU12_c
+    - AU15_c
+    - AU20_c
+    - AU23_c
+    - AU25_c
+    - AU26_c
+    - AU28_c
+    - AU45_c

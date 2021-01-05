@@ -151,10 +151,10 @@ def objective(trial):
                 CLASSES,
             )
         else:
-            rolling_window_size = 1 # trial.suggest_int("r_win_size", 1, 10)
-            step_size = 2 # trial.suggest_int("step_size", 2, 4)
+            rolling_window_size = 1  # trial.suggest_int("r_win_size", 1, 10)
+            step_size = 2  # trial.suggest_int("step_size", 2, 4)
             df = LOADED_DF
-        
+
         print("\nStepping")
         df = tdf.sub_sample(df, step_size)
         if NORMALIZE:
@@ -211,7 +211,7 @@ models_to_try = [
     "lstm",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 30  # Number of trials to search for each model
+NUM_TRIALS = 25  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 CLASSES = [
