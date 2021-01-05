@@ -271,19 +271,22 @@ class ModelTraining:
 
     def run_epoch(self):
         total_loss = 0
-        labels, predictions = [], []
+        labels, predictions, probs = [], [], []
 
         for xb, yb in tqdm(self.data_loader):
-            batch_loss, batch_predictions = self.run_batch(xb.to(dev), yb.to(dev))
+            batch_loss, batch_predictions, batch_probs = self.run_batch(
+                xb.to(dev), yb.to(dev)
+            )
             total_loss += batch_loss
 
             labels.append(yb.numpy())
+            probs.append(batch_probs.cpu().detach().numpy())
             predictions.append(batch_predictions.cpu().detach().numpy())
 
         avg_loss = total_loss / len(self.data_loader)
 
         report, summary_stat = self.calculate_metrics(
-            np.vstack(labels), np.vstack(predictions)
+            np.vstack(labels), np.vstack(predictions), np.vstack(probs)
         )
 
         m_list, _ = self.listify_metrics(report, avg_loss)
@@ -317,12 +320,13 @@ class ModelTraining:
             self.opt.step()
             self.opt.zero_grad()
 
-        preds = torch.round(torch.sigmoid(raw_out))
+        probs = torch.sigmoid(raw_out)
+        preds = torch.round(probs)
         # if batch_loss > 200:
         #     print(f"\nLoss was {batch_loss}")
         #     print(f"Or: {self.loss_func2(torch.sigmoid(raw_out), yb).item()}")
 
-        return batch_loss, preds
+        return batch_loss, preds, probs
 
     def fit_sklearn_classifier(self):
         print(f"Fitting Sklearn Classifier - {self.params['model']}")
@@ -361,16 +365,51 @@ class ModelTraining:
         else:
             y_test = [int(a) for a in y_test]
 
-        print("substituting probs")
         if probs is None:
+            print("substituting probs")
             probs = y_pred_list
         else:
             probs = [a.squeeze().tolist() for a in probs]
-            probs = probs[0]
+
+            # if len(probs) == 1:
+            #     probs = probs[0]
+            # else:
+            #     print(f"original probs: {probs[:5]}")
+
+            if self.params["num_classes"] == 1:
+                if type(probs[0]) is float:  # Pytorch
+                    print("Not adjusting torch params")
+                else:  # Sklearn
+                    probs = [p[1] for p in probs]
+
+            else:  # More than one class
+                if len(probs[0]) == self.params["num_classes"]:  # Pytorch
+                    print("Not adjusting torch params")
+                else:  # Sklearn
+                    probs_copy = []
+                    for e in range(len(probs[0])):
+                        example = []
+                        for i in range(self.params["num_classes"]):
+                            example.append(probs[i][e][1])
+                        probs_copy.append(example)
+                    probs = probs_copy
+                    # probs = [[example[1] for example in label] for label in probs]
+                    # probs = [[] for example ]
+        # print(probs[:5])
+
+        # print(len(probs), len(y_pred_list))
+
+        assert len(probs) == len(
+            y_pred_list
+        ), "must make the same number of comparisons"
+
+        # print(f"labels: {y_test[:5]}")
+        # print(f"predictions: {y_pred_list[:5]}")
+        # print(f"probs: {probs[:5]}")
 
         # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
         try:
-            print("calculating roc auc")
+            # print("calculating roc auc")
             auROC = roc_auc_score(y_test, probs, average=None)  # average="weighted")
         except Exception as e:
             print(e)
@@ -379,11 +418,11 @@ class ModelTraining:
             print(f"probs: {probs[:20]}")
             raise e
 
-        print("calculating AP score")
+        # print("calculating AP score")
         AvgPrec = average_precision_score(
             y_test, probs, average=None
         )  # average="weighted")
-        print("calculating report")
+        # print("calculating report")
         report = classification_report(
             y_test,
             y_pred_list,
