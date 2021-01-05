@@ -139,25 +139,30 @@ def objective(trial):
         # Transform dataset
         print("\n\n\n*****Transforming Dataset*******")
         tdf = TransformDF()
-        rolling_window_size = trial.suggest_int("r_win_size", 1, 10)
-        step_size = trial.suggest_int("step_size", 2, 4)
+        if ROLL_FEATURES:
+            rolling_window_size = trial.suggest_int("r_win_size", 1, 10)
+            step_size = trial.suggest_int("step_size", 2, 4)
 
-        df = tdf.apply_rolling_window(
-            LOADED_DF,
-            rolling_window_size,
-            KEEP_UNWINDOWED_FEATURES,
-            rolling_window_config,
-            CLASSES,
-        )
+            LOADED_DF = tdf.apply_rolling_window(
+                LOADED_DF,
+                rolling_window_size,
+                KEEP_UNWINDOWED_FEATURES,
+                rolling_window_config,
+                CLASSES,
+            )
+        else:
+            rolling_window_size = 1 # trial.suggest_int("r_win_size", 1, 10)
+            step_size = 2 # trial.suggest_int("step_size", 2, 4)
+
         print("\nStepping")
-        df = tdf.sub_sample(df, step_size)
+        LOADED_DF = tdf.sub_sample(LOADED_DF, step_size)
         if NORMALIZE:
-            df = tdf.normalize_dataset(df, CLASSES)
+            LOADED_DF = tdf.normalize_dataset(LOADED_DF, CLASSES)
 
         print("\nCreate Dataset")
 
         dataset = TimeSeriesDataset(
-            df, labels=CLASSES, shuffle=SHUFFLE, data_hash=FILE_HASH
+            LOADED_DF, labels=CLASSES, shuffle=SHUFFLE, data_hash=FILE_HASH
         )
 
         dataset.setup_dataset(window=model_params["window"])
@@ -192,14 +197,14 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # *********************************************************
 EXP_NAME = "turn-taking"
-COMPUTER = "cmb-testing"
+COMPUTER = "Exp-1"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    "tcn",
     "xgb",
-    "gru",
     "tree",
+    "tcn",
+    "gru",
     "forest",
     "rnn",
     "lstm",
@@ -226,6 +231,7 @@ OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_WINDOW = 20  # Max window the model can look through
 CLOSING_WINDOW = 30
+ROLL_FEATURES = False
 # Rename to history? 'window' usage is confusing
 
 
@@ -276,6 +282,7 @@ params = {
     "overlap": OVERLAP,
     "shuffle": SHUFFLE,
     "normalize": NORMALIZE,
+    "rolling": ROLL_FEATURES,
 }
 tags = [
     COMPUTER,
@@ -288,8 +295,10 @@ if OVERLAP:
     tags.append("Overlap")
 if NORMALIZE:
     tags.append("Normalized")
-if KEEP_UNWINDOWED_FEATURES:
-    tags.append("Keep-Unwindowed")
+if ROLL_FEATURES:
+    tags.append("Rolling")
+    if KEEP_UNWINDOWED_FEATURES:
+        tags.append("Keep-Unwindowed")
 
 # Start up Neptune, init call takes the name of the sandbox
 # Neptune requires that you have set your api key in the terminal
