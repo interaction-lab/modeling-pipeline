@@ -181,6 +181,7 @@ class TimeSeriesDataset(Dataset):
         df,
         overlap=False,
         shuffle=True,
+        subsample_perc=75,
         labels=["speaking"],
         data_hash="",
     ):
@@ -208,6 +209,7 @@ class TimeSeriesDataset(Dataset):
         self.overlap = overlap
         self.shuffle = shuffle
         self.data_hash = data_hash
+        self.subsample = 100 - subsample_perc
 
         print(f"Datset loaded with shape {self.df.shape}")
         print(f"Labels loaded with shape {self.labels.shape}")
@@ -248,11 +250,26 @@ class TimeSeriesDataset(Dataset):
         flatten = itertools.chain.from_iterable
         self.train_ind = list(flatten(folds))
 
+        if self.subsample:  # Undersample
+            todrop = []
+            for i in range(len(self.train_ind)):
+                keep = False
+                for l in self.labels:
+                    if self.labels[l].iloc[self.train_ind[i]]:
+                        keep = True
+                if np.random.randint(100) > self.subsample and not keep:
+                    todrop.append(i)
+
+            todrop = set(todrop)
+            print("Dropping:", len(todrop), " out of ", len(self.train_ind))
+            for index in sorted(todrop, reverse=True):
+                del self.train_ind[index]
+
         self.weight_labels()
 
         print("Indices Created:")
-        print(f"test: [{min(self.test_ind)}-{max(self.test_ind)}]")
-        print(f"val: [{min(self.val_ind)}-{max(self.val_ind)}]")
+        print(f"test: [{min(self.test_ind)}-{max(self.test_ind)}], ", end="")
+        print(f"val: [{min(self.val_ind)}-{max(self.val_ind)}], ", end="")
         print(f"train: [{min(self.train_ind)}-{max(self.train_ind)}]")
         return
 
@@ -262,17 +279,19 @@ class TimeSeriesDataset(Dataset):
         for c in self.labels.columns:
 
             perc = self.labels[c].sum() / len(self.labels)
+
             train_perc = self.labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
             val_perc = self.labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
             test_perc = self.labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
 
             # We only use training class balance for determining weights
-            self.weights.append(1 / train_perc)
+            self.weights.append(0.5 / train_perc)
 
-            print(f"\n{c} {perc}% of the time overall (len={len(self.labels)})")
+            print(f"{c} {perc}% of the time overall (len={len(self.labels)})")
             print(f"{c} {train_perc}% of the time in train (len={len(self.train_ind)})")
             print(f"{c} {val_perc}% of the time in val (len={len(self.val_ind)})")
             print(f"{c} {test_perc}% of the time in test (len={len(self.test_ind)})\n")
+        print("Wights are: ", self.weights)
 
     @timeit
     def get_sk_dataset(self, feather_dir="./data/feathered_data"):
@@ -286,7 +305,7 @@ class TimeSeriesDataset(Dataset):
             print(f"loading feathered sk data: {feather_path}")
             self.sk_df = pd.read_feather(feather_path)
         else:
-            print("reshaping sk data")
+            print("Reshaping sk data. ", end="")
             # Flatten dataframe by window for sklearn
             self.sk_df = pd.concat(
                 [
@@ -300,14 +319,14 @@ class TimeSeriesDataset(Dataset):
             self.sk_df.columns = [f"c-{c}" for c in range(len(self.sk_df.columns))]
             # self.sk_df.to_feather(feather_path)
 
-        print(f"sk data new shape is {self.sk_df.shape}")
+        print(f"Sk data new shape is {self.sk_df.shape} \n")
         new_val_ind = [int(i / self.window) for i in self.val_ind]
         new_test_ind = [int(i / self.window) for i in self.test_ind]
         new_train_ind = [int(i / self.window) for i in self.train_ind]
 
         print("Updated Indices:")
-        print(f"test: [{min(new_test_ind)}-{max(new_test_ind)}]")
-        print(f"val: [{min(new_val_ind)}-{max(new_val_ind)}]")
+        print(f"test: [{min(new_test_ind)}-{max(new_test_ind)}], ", end="")
+        print(f"val: [{min(new_val_ind)}-{max(new_val_ind)}], ", end="")
         print(f"train: [{min(new_train_ind)}-{max(new_train_ind)}]")
 
         X_val = np.array(self.sk_df.values[new_val_ind])
