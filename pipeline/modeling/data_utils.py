@@ -71,8 +71,8 @@ class LoadDF:
                 self.num_examples = len(dir_list)
 
             self.feature_files[fs] = dir_list
-        print("Files to load: ")
-        print(self.feature_files)
+        # print("Files to load: ")
+        # print(self.feature_files)
         for i in self.feature_files.values():
             assert (
                 len(i) == self.num_examples
@@ -121,59 +121,47 @@ class TransformDF:
 
     @timeit
     def apply_rolling_window(
-        self, df, window_size, keep_old_features, feature_config, labels
+        self, df, win_size, keep_old_features, feature_config, labels
     ):
-        print("Applying rolling window, size: ", window_size)
+        print("Applying rolling window, size: ", win_size)
         if keep_old_features:
             windowed_df = df
         else:
             windowed_df = df[labels]
 
-        if window_size == 1:
+        if win_size == 1:
             return df
-
+        print("load config")
         with open(feature_config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
+        # Deliberately making columns serially because in parallel can cause a memory error
         if self.config["mean_features"]:
-            mean_cols = [f + "_mean" for f in self.config["mean_features"]]
-
-            windowed_df[mean_cols] = (
-                df[self.config["mean_features"]]
-                .rolling(window_size, min_periods=1)
-                .mean()
-            )
+            print("Rolling mean features")
+            for f in self.config["mean_features"]:
+                mean_col = f + "_mean"
+                windowed_df[mean_col] = df[f].rolling(win_size, min_periods=1).mean()
         if self.config["variance_features"]:
-            var_cols = [f + "_var" for f in self.config["variance_features"]]
-            windowed_df[var_cols] = (
-                df[self.config["variance_features"]]
-                .rolling(window_size, min_periods=1)
-                .var()
-            )
+            print("Rolling var features")
+            for f in self.config["variance_features"]:
+                var_col = f + "_var"
+                windowed_df[var_col] = df[f].rolling(win_size, min_periods=1).var()
         if self.config["median_features"]:
-            median_cols = [f + "_median" for f in self.config["median_features"]]
-
-            windowed_df[median_cols] = (
-                df[self.config["median_features"]]
-                .rolling(window_size, min_periods=1)
-                .median()
-            )
+            print("Rolling median features")
+            for f in self.config["median_features"]:
+                med_col = f + "_median"
+                windowed_df[med_col] = df[f].rolling(win_size, min_periods=1).median()
         if self.config["mode_features"]:
-            mode_cols = [f + "_mode" for f in self.config["mode_features"]]
-
-            windowed_df[mode_cols] = (
-                df[self.config["mode_features"]]
-                .rolling(window_size, min_periods=1)
-                .mode()
-            )
+            print("Rolling mode features")
+            for f in self.config["mode_features"]:
+                mode_col = f + "_mode"
+                windowed_df[mode_col] = df[f].rolling(win_size, min_periods=1).mode()
         if self.config["max_features"]:
-            max_cols = [f + "_max" for f in self.config["max_features"]]
+            print("Rolling max features")
+            for f in self.config["max_features"]:
+                max_col = f + "_max"
+                windowed_df[max_col] = df[f].rolling(win_size, min_periods=1).max()
 
-            windowed_df[max_cols] = (
-                df[self.config["max_features"]]
-                .rolling(window_size, min_periods=1)
-                .max()
-            )
         windowed_df = windowed_df.fillna(0)
         return windowed_df
 
@@ -220,6 +208,9 @@ class TimeSeriesDataset(Dataset):
         self.overlap = overlap
         self.shuffle = shuffle
         self.data_hash = data_hash
+
+        print(f"Datset loaded with shape {self.df.shape}")
+        print(f"Labels loaded with shape {self.labels.shape}")
         return
 
     @timeit
@@ -258,6 +249,11 @@ class TimeSeriesDataset(Dataset):
         self.train_ind = list(flatten(folds))
 
         self.weight_labels()
+
+        print("Indices Created:")
+        print(f"test: [{min(self.test_ind)}-{max(self.test_ind)}]")
+        print(f"val: [{min(self.val_ind)}-{max(self.val_ind)}]")
+        print(f"train: [{min(self.train_ind)}-{max(self.train_ind)}]")
         return
 
     def weight_labels(self):
@@ -276,19 +272,21 @@ class TimeSeriesDataset(Dataset):
             print(f"\n{c} {perc}% of the time overall (len={len(self.labels)})")
             print(f"{c} {train_perc}% of the time in train (len={len(self.train_ind)})")
             print(f"{c} {val_perc}% of the time in val (len={len(self.val_ind)})")
-            print(f"{c} {test_perc}% of the time in test (len={len(self.test_ind)}\n)")
+            print(f"{c} {test_perc}% of the time in test (len={len(self.test_ind)})\n")
 
     @timeit
     def get_sk_dataset(self, feather_dir="./data/feathered_data"):
         assert self.overlap is False, "Overlap must be false for sklearn"
 
+        feather_path = f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"
+
         # Reuse datasets for faster sklearn performance
-        # if exists(f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"):
+        # if exists(feather_path):
         if False:
-            self.sk_df = pd.read_feather(
-                f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"
-            )
+            print(f"loading feathered sk data: {feather_path}")
+            self.sk_df = pd.read_feather(feather_path)
         else:
+            print("reshaping sk data")
             # Flatten dataframe by window for sklearn
             self.sk_df = pd.concat(
                 [
@@ -300,17 +298,22 @@ class TimeSeriesDataset(Dataset):
                 axis=1,
             )
             self.sk_df.columns = [f"c-{c}" for c in range(len(self.sk_df.columns))]
-            self.sk_df.to_feather(
-                f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"
-            )
+            # self.sk_df.to_feather(feather_path)
 
+        print(f"sk data new shape is {self.sk_df.shape}")
         new_val_ind = [int(i / self.window) for i in self.val_ind]
+        new_test_ind = [int(i / self.window) for i in self.test_ind]
+        new_train_ind = [int(i / self.window) for i in self.train_ind]
+
+        print("Updated Indices:")
+        print(f"test: [{min(new_test_ind)}-{max(new_test_ind)}]")
+        print(f"val: [{min(new_val_ind)}-{max(new_val_ind)}]")
+        print(f"train: [{min(new_train_ind)}-{max(new_train_ind)}]")
+
         X_val = np.array(self.sk_df.values[new_val_ind])
 
-        new_test_ind = [int(i / self.window) for i in self.test_ind]
         X_test = np.array(self.sk_df.values[new_test_ind])
 
-        new_train_ind = [int(i / self.window) for i in self.train_ind]
         X_train = np.array(self.sk_df.values[new_train_ind])
 
         Y_train = np.array(

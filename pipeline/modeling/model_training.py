@@ -207,7 +207,7 @@ class ModelTraining:
     def train_and_eval_model(self):
 
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
-            auc_roc = self.fit_sklearn_classifier()
+            hyperopt_metric = self.fit_sklearn_classifier()
         else:
             if self.params["weight_classes"]:
                 weights = torch.FloatTensor(self.dataset.weights)
@@ -225,8 +225,8 @@ class ModelTraining:
             self.opt = optim.SGD(self.model.parameters(), lr=self.params["lr"])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
 
-            auc_roc = self.fit_torch_nn()
-        return auc_roc
+            hyperopt_metric = self.fit_torch_nn()
+        return hyperopt_metric
 
     def fit_torch_nn(self):
         print(f"Fitting PyTorch Classifier - {self.params['model']}")
@@ -248,13 +248,13 @@ class ModelTraining:
             self.dataset.status = "validation"
 
             with torch.no_grad():
-                val_metric_values, val_summary = self.run_epoch()
+                val_metric_values, val_sum_stat = self.run_epoch()
 
                 self.metrics["val"].append(val_metric_values)
                 val_loss = val_metric_values[loss_index]
 
             if self.trial:
-                self.trial.report(val_summary, step=self.epoch)
+                self.trial.report(val_sum_stat, step=self.epoch)
 
             # EARLY STOPPING CHECK
             stop_early = es_los.step(val_loss)
@@ -265,9 +265,9 @@ class ModelTraining:
                 self.dataset.status = "testing"
                 with torch.no_grad():
                     self.metrics["test"], _ = self.run_epoch()
-                return val_summary
+                return val_sum_stat
 
-            self.scheduler.step(val_summary)
+            self.scheduler.step(val_sum_stat)
 
     def run_epoch(self):
         total_loss = 0
@@ -328,10 +328,10 @@ class ModelTraining:
         print(f"Fitting Sklearn Classifier - {self.params['model']}")
         X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_sk_dataset()
         sample_weights = compute_sample_weight(class_weight="balanced", y=Y_train)
-
+        print("Fitting model")
         self.model.fit(X_train, Y_train, sample_weight=sample_weights)
         self.metrics = {}
-
+        print("Testing fit")
         self.metrics["train"], _, _ = self.test_fit(X_train, Y_train, "train")
         self.metrics["val"], _, val_result_summary = self.test_fit(X_val, Y_val, "val")
         self.metrics["test"], test_results_df, test_result_summary = self.test_fit(
@@ -344,13 +344,16 @@ class ModelTraining:
 
     def test_fit(self, X_set, Y_set, set_name):
         Y_pred = self.model.predict(X_set)
+        Y_prob = self.model.predict_proba(X_set)
         metrics_dict, m_summary = self.calculate_metrics(
-            Y_set, Y_pred, output_dict=True
+            Y_set, Y_pred, probs=Y_prob, output_dict=True
         )
         m_list, m_df = self.listify_metrics(metrics_dict)
         return m_list, m_df, m_summary
 
-    def calculate_metrics(self, labels, preds, output_dict=True):
+    def calculate_metrics(
+        self, labels, preds, probs=None, output_dict=True, summary_stat="macro avg"
+    ):
         y_pred_list = [a.squeeze().tolist() for a in preds]
         y_test = [a.squeeze().tolist() for a in labels]
         if type(y_test[0]) is list:
@@ -358,21 +361,29 @@ class ModelTraining:
         else:
             y_test = [int(a) for a in y_test]
 
+        print("substituting probs")
+        if probs is None:
+            probs = y_pred_list
+        else:
+            probs = [a.squeeze().tolist() for a in probs]
+            probs = probs[0]
+
         # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
         try:
-            auROC = roc_auc_score(
-                y_test, y_pred_list, average=None
-            )  # average="weighted")
+            print("calculating roc auc")
+            auROC = roc_auc_score(y_test, probs, average=None)  # average="weighted")
         except Exception as e:
             print(e)
-            print(f"labels: {y_test}")
-            print(f"predictions: {y_pred_list}")
+            print(f"labels: {y_test[:20]}")
+            print(f"predictions: {y_pred_list[:20]}")
+            print(f"probs: {probs[:20]}")
             raise e
 
+        print("calculating AP score")
         AvgPrec = average_precision_score(
-            y_test, y_pred_list, average=None
+            y_test, probs, average=None
         )  # average="weighted")
-
+        print("calculating report")
         report = classification_report(
             y_test,
             y_pred_list,
@@ -385,11 +396,12 @@ class ModelTraining:
             for i in range(len(self.params["target_names"])):
                 report[self.params["target_names"][i]]["auROC"] = auROC[i]
                 report[self.params["target_names"][i]]["AP"] = AvgPrec[i]
-            summary_stat = sum(auROC) / len(auROC)
+            # summary_stat = sum(auROC) / len(auROC)
         else:
             report[self.params["target_names"][0]]["auROC"] = auROC
             report[self.params["target_names"][0]]["AP"] = AvgPrec
-            summary_stat = auROC
+            # summary_stat = auROC
+        summary_stat = report[summary_stat]["f1-score"]
         return report, summary_stat
 
     def listify_metrics(self, metrics_dict, loss=0):
@@ -431,7 +443,7 @@ class ModelTraining:
                     if m in c:
                         if verbose:
                             print(f"{k}_{c}", df[c].iloc[-1])
-                        elif "auROC" in c:
+                        elif "f1-score" in c:
                             print(f"{k}_{c}", df[c].iloc[-1])
 
         print("create graphs")
@@ -448,7 +460,7 @@ class ModelTraining:
             return
         else:
             columns_to_plot = [
-                c for c in df_train.columns if ("auROC" in c or "AP" in c)
+                c for c in df_train.columns if ("f1-score" in c or "AP" in c)
             ]
             # Create a figure showing metrics progress while training
             fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))

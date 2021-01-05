@@ -13,6 +13,17 @@ from pipeline.modeling.data_utils import TimeSeriesDataset, LoadDF, TransformDF,
 from pipeline.modeling.model_training import ModelTraining
 
 
+@timeit
+def add_finishing_label(df, window):
+    print("******Adding in Finishing Label*****")
+    df["finishing"] = 0.0
+    df["temp"] = df[["speaking"]].rolling(window, min_periods=1).sum()
+    df["temp"][df["temp"] < window] = 1.0
+    df["finishing"][(df["speaking"] == 1.0) & (df["temp"] == 1.0)] = 1.0
+
+    return df
+
+
 def log_reports(metrics, columns):
     # Here is where we can get creative showing what we want
     for k in ["train", "val", "test"]:
@@ -138,11 +149,16 @@ def objective(trial):
             rolling_window_config,
             CLASSES,
         )
+        print("\nStepping")
         df = tdf.sub_sample(df, step_size)
         if NORMALIZE:
             df = tdf.normalize_dataset(df, CLASSES)
 
-        dataset = TimeSeriesDataset(df, labels=CLASSES, data_hash=FILE_HASH)
+        print("\nCreate Dataset")
+
+        dataset = TimeSeriesDataset(
+            df, labels=CLASSES, shuffle=SHUFFLE, data_hash=FILE_HASH
+        )
 
         dataset.setup_dataset(window=model_params["window"])
 
@@ -157,10 +173,10 @@ def objective(trial):
         print("\n\n\n******Training and evaluating model******")
         print("Creating Trainer:")
         trainer = ModelTraining(model_params, dataset, trial, verbose=True)
-        print(f"Traing and eval on data (size={dataset.df.shape}")
+        print(f"\nTrain and eval on data (size={dataset.df.shape})")
         summary_metric = trainer.train_and_eval_model()
 
-        print("Logging reports")
+        print("\nLogging reports")
         log_reports(trainer.metrics, trainer.columns)
 
         return summary_metric
@@ -176,12 +192,12 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # *********************************************************
 EXP_NAME = "turn-taking"
-COMPUTER = "Exp-1"
+COMPUTER = "cmb-testing"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    "xgb",
     "tcn",
+    "xgb",
     "gru",
     "tree",
     "forest",
@@ -193,7 +209,8 @@ NUM_TRIALS = 30  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 CLASSES = [
-    "speaking", "finishing"
+    "speaking",
+    "finishing",
 ]  # List of class labels, e.g. ["speaking", "finishing"], ["speaking"], ["finishing"]
 WEIGHT_CLASSES = True  # Weight loss against class imbalance
 KEEP_UNWINDOWED_FEATURES = False
@@ -204,6 +221,7 @@ KEEP_UNWINDOWED_FEATURES = False
 #   "./config/data_loader_{FEATURES}_config.yml"
 FEATURES = "handcrafted"  # handcrafted, pearson, etc.
 
+SHUFFLE = False
 OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_WINDOW = 20  # Max window the model can look through
@@ -226,6 +244,7 @@ for p in ["left", "right", "center"]:
     config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_{p}.yml"
     data_loader = LoadDF(config)
     LOADED_DF, FILE_HASH = data_loader.load_all_dataframes()
+
     # print(LOADED_DF.shape)
     c = list(LOADED_DF.columns)
     c.remove(p)
@@ -236,16 +255,16 @@ for p in ["left", "right", "center"]:
 LOADED_DF = pd.concat(df_list, axis=0)
 
 if "finishing" in CLASSES:
-    print("******Adding in Finishing Label*****")
-    LOADED_DF["finishing"] = float(0)
-    for i in tqdm(range(len(LOADED_DF) - CLOSING_WINDOW)):
-        if LOADED_DF["speaking"].iloc[i]:
-            for j in range(CLOSING_WINDOW):
-                if not LOADED_DF["speaking"].iloc[i + j]:
-                    LOADED_DF["finishing"].iloc[i] = float(1)
-                    continue
+    LOADED_DF = add_finishing_label(LOADED_DF, CLOSING_WINDOW)
+    LOADED_DF = LOADED_DF.drop(["index", "temp"], axis=1)
+    LOADED_DF.reset_index(inplace=True, drop=True)
 
-# print(LOADED_DF)
+if "speaking" not in CLASSES:
+    print("Select only finishing")
+    LOADED_DF = LOADED_DF[LOADED_DF["speaking"] > 0]
+    LOADED_DF = LOADED_DF.drop(["speaking"], axis=1)
+    print(f"New shape: {LOADED_DF.shape}")
+
 
 # Record experimental details for Neptune
 params = {
@@ -255,6 +274,7 @@ params = {
     "patience": PATIENCE,
     "weight classes": WEIGHT_CLASSES,
     "overlap": OVERLAP,
+    "shuffle": SHUFFLE,
     "normalize": NORMALIZE,
 }
 tags = [
