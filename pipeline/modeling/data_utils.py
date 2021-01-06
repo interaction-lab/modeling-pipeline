@@ -124,10 +124,10 @@ class TransformDF:
         self, df, win_size, keep_old_features, feature_config, labels
     ):
         print("Applying rolling window, size: ", win_size)
-        if keep_old_features:
-            windowed_df = df
-        else:
-            windowed_df = df[labels]
+        # if keep_old_features:
+        #     windowed_df = df
+        # else:
+        #     windowed_df = df[labels]
 
         if win_size == 1:
             return df
@@ -135,41 +135,56 @@ class TransformDF:
         with open(feature_config) as f:
             self.config = yaml.load(f, Loader=yaml.FullLoader)
 
-        # Deliberately making columns serially because in parallel can cause a memory error
         if self.config["mean_features"]:
             print("Rolling mean features")
             for f in self.config["mean_features"]:
                 mean_col = f + "_mean"
-                windowed_df[mean_col] = df[f].rolling(win_size, min_periods=1).mean()
+                df[mean_col] = df[f].rolling(win_size, min_periods=1).mean()
+                # TODO: fix drop duplicating
+                # if not keep_old_features:
+                #     df.drop([f], inplace=True, axis=1)
         if self.config["variance_features"]:
             print("Rolling var features")
             for f in self.config["variance_features"]:
                 var_col = f + "_var"
-                windowed_df[var_col] = df[f].rolling(win_size, min_periods=1).var()
+                df[var_col] = df[f].rolling(win_size, min_periods=1).var()
+                # if not keep_old_features:
+                #     df.drop([f], inplace=True, axis=1)
         if self.config["median_features"]:
             print("Rolling median features")
             for f in self.config["median_features"]:
                 med_col = f + "_median"
-                windowed_df[med_col] = df[f].rolling(win_size, min_periods=1).median()
-        if self.config["mode_features"]:
-            print("Rolling mode features")
-            for f in self.config["mode_features"]:
-                mode_col = f + "_mode"
-                windowed_df[mode_col] = df[f].rolling(win_size, min_periods=1).mode()
+                df[med_col] = df[f].rolling(win_size, min_periods=1).median()
+                # if not keep_old_features:
+                #     df.drop([f], inplace=True, axis=1)
         if self.config["max_features"]:
             print("Rolling max features")
             for f in self.config["max_features"]:
                 max_col = f + "_max"
-                windowed_df[max_col] = df[f].rolling(win_size, min_periods=1).max()
+                df[max_col] = df[f].rolling(win_size, min_periods=1).max()
+                # if not keep_old_features:
+                #     df.drop([f], inplace=True, axis=1)
+        if not keep_old_features:
+            todrop = []
+            for _, v in self.config.items():
+                if v:
+                    for c in v:
+                        todrop.append(c)
+            todrop = list(set(todrop))
+            df.drop(todrop, axis=1, inplace=True)
 
-        windowed_df = windowed_df.fillna(0)
-        return windowed_df
+        df.fillna(0, inplace=True)
+        return df
 
     @timeit
     def sub_sample(self, df, step):
         print(f"Old shape: {df.shape} (step {step})")
         if step != 1:
-            df = df.loc[df.index[np.arange(len(df)) % step == 1]]
+            if "index" in df.columns:
+                df.drop(["index"], inplace=True, axis=1)
+            df.reset_index(inplace=True, drop=True)
+            todrop = [i for i in range(len(df)) if (i % step)]
+            df.drop(todrop, inplace=True)
         print(f"New shape: {df.shape}")
         return df
 

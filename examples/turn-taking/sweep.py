@@ -11,6 +11,7 @@ from optuna.samplers import TPESampler
 
 from pipeline.modeling.data_utils import TimeSeriesDataset, LoadDF, TransformDF, timeit
 from pipeline.modeling.model_training import ModelTraining
+from pipeline.common.optimize_pandas import optimize
 
 
 @timeit
@@ -20,8 +21,7 @@ def add_finishing_label(df, window):
     df["temp"] = df[["speaking"]].rolling(window, min_periods=1).sum()
     df["temp"][df["temp"] < window] = 1.0
     df["finishing"][(df["speaking"] == 1.0) & (df["temp"] == 1.0)] = 1.0
-
-    return df
+    return
 
 
 def log_reports(metrics, columns):
@@ -138,13 +138,14 @@ def objective(trial):
     try:
         # Transform dataset
         print("\n\n\n*****Transforming Dataset*******")
+        df = pd.read_feather(FDF_PATH)
         tdf = TransformDF()
         if ROLL_FEATURES:
             rolling_window_size = trial.suggest_int("r_win_size", 1, 10)
             step_size = trial.suggest_int("step_size", 2, 4)
 
-            df = tdf.apply_rolling_window(
-                LOADED_DF,
+            tdf.apply_rolling_window(
+                df,
                 rolling_window_size,
                 KEEP_UNWINDOWED_FEATURES,
                 rolling_window_config,
@@ -153,12 +154,13 @@ def objective(trial):
         else:
             rolling_window_size = 1  # trial.suggest_int("r_win_size", 1, 10)
             step_size = 2  # trial.suggest_int("step_size", 2, 4)
-            df = LOADED_DF
+            # df = df
 
         print("\nStepping")
-        df = tdf.sub_sample(df, step_size)
+        tdf.sub_sample(df, step_size)
+
         if NORMALIZE:
-            df = tdf.normalize_dataset(df, CLASSES)
+            tdf.normalize_dataset(df, CLASSES)
 
         print("\nCreate Dataset")
 
@@ -198,7 +200,7 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # *********************************************************
 EXP_NAME = "turn-taking"
-COMPUTER = "Exp-1"
+COMPUTER = "Personal-Laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
@@ -215,7 +217,7 @@ NUM_TRIALS = 25  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 CLASSES = [
-    "speaking",
+    # "speaking",
     "finishing",
 ]  # List of class labels, e.g. ["speaking", "finishing"], ["speaking"], ["finishing"]
 WEIGHT_CLASSES = True  # Weight loss against class imbalance
@@ -225,14 +227,14 @@ KEEP_UNWINDOWED_FEATURES = False
 #   have been removed. The list of features to include is placed
 #   in a config file which matches the pattern:
 #   "./config/data_loader_{FEATURES}_config.yml"
-FEATURES = "handcrafted"  # handcrafted, pearson, etc.
+FEATURES = "pearson-ext"  # handcrafted, pearson, etc.
 
 SHUFFLE = False
 OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_WINDOW = 20  # Max window the model can look through
 CLOSING_WINDOW = 30
-ROLL_FEATURES = False
+ROLL_FEATURES = True
 # Rename to history? 'window' usage is confusing
 
 
@@ -259,18 +261,24 @@ for p in ["left", "right", "center"]:
     LOADED_DF.columns = c
     df_list.append(LOADED_DF)
 
-LOADED_DF = pd.concat(df_list, axis=0)
+print("Concat and optimize")
+LOADED_DF = optimize(pd.concat(df_list, axis=0))
 
 if "finishing" in CLASSES:
-    LOADED_DF = add_finishing_label(LOADED_DF, CLOSING_WINDOW)
-    LOADED_DF = LOADED_DF.drop(["index", "temp"], axis=1)
-    LOADED_DF.reset_index(inplace=True, drop=True)
+    add_finishing_label(LOADED_DF, CLOSING_WINDOW)
+    LOADED_DF.drop(["index", "temp"], inplace=True, axis=1)
 
 if "speaking" not in CLASSES:
     print("Select only finishing")
     LOADED_DF = LOADED_DF[LOADED_DF["speaking"] > 0]
-    LOADED_DF = LOADED_DF.drop(["speaking"], axis=1)
+    LOADED_DF.drop(["speaking"], inplace=True, axis=1)
     print(f"New shape: {LOADED_DF.shape}")
+
+
+LOADED_DF.reset_index(inplace=True, drop=True)
+# Save the df that has been loaded with feather for quick reloading
+FDF_PATH = "./data/feathered_data/tmp.feather"
+LOADED_DF.to_feather(FDF_PATH)
 
 
 # Record experimental details for Neptune
