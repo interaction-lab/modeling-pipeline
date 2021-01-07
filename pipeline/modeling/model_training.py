@@ -306,25 +306,17 @@ class ModelTraining:
         if batch_loss > 100:
             loss_alt = self.loss_func2(torch.sigmoid(raw_out), yb)
             batch_loss_alt = loss_alt.item()
-            # print(f"\nSwitching: {batch_loss} <- {batch_loss_alt}")
             loss = loss_alt
             batch_loss = batch_loss_alt
 
         if self.dataset.status == "training":
             loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 10)
-            # if args.clip_gradient is not None:
-            #     total_norm = clip_grad_norm(self.model.parameters(), args.clip_gradient)
-            #     if total_norm > args.clip_gradient:
-            #         print("clipping gradient: {} with coef {}".format(total_norm, args.clip_gradient / total_norm))
             self.opt.step()
             self.opt.zero_grad()
 
         probs = torch.sigmoid(raw_out)
         preds = torch.round(probs)
-        # if batch_loss > 200:
-        #     print(f"\nLoss was {batch_loss}")
-        #     print(f"Or: {self.loss_func2(torch.sigmoid(raw_out), yb).item()}")
 
         return batch_loss, preds, probs
 
@@ -371,21 +363,12 @@ class ModelTraining:
         else:
             probs = [a.squeeze().tolist() for a in probs]
 
-            # if len(probs) == 1:
-            #     probs = probs[0]
-            # else:
-            #     print(f"original probs: {probs[:5]}")
-
             if self.params["num_classes"] == 1:
-                if type(probs[0]) is float:  # Pytorch
-                    print("Not adjusting torch params")
-                else:  # Sklearn
+                if type(probs[0]) is not float:  # Pytorch
                     probs = [p[1] for p in probs]
 
             else:  # More than one class
-                if len(probs[0]) == self.params["num_classes"]:  # Pytorch
-                    print("Not adjusting torch params")
-                else:  # Sklearn
+                if len(probs[0]) != self.params["num_classes"]:  # Pytorch
                     probs_copy = []
                     for e in range(len(probs[0])):
                         example = []
@@ -393,19 +376,10 @@ class ModelTraining:
                             example.append(probs[i][e][1])
                         probs_copy.append(example)
                     probs = probs_copy
-                    # probs = [[example[1] for example in label] for label in probs]
-                    # probs = [[] for example ]
-        # print(probs[:5])
-
-        # print(len(probs), len(y_pred_list))
 
         assert len(probs) == len(
             y_pred_list
         ), "must make the same number of comparisons"
-
-        # print(f"labels: {y_test[:5]}")
-        # print(f"predictions: {y_pred_list[:5]}")
-        # print(f"probs: {probs[:5]}")
 
         # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
         try:
