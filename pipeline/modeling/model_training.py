@@ -291,7 +291,7 @@ class ModelTraining:
 
         m_list, _ = self.listify_metrics(report, avg_loss)
         s = self.dataset.status
-        print(f"{self.epoch}-{s}: L: {avg_loss:.3f} | auROC {summary_stat:.3f}")
+        print(f"{self.epoch}-{s}: L: {avg_loss:.3f} | F1: {summary_stat:.3f}")
 
         return m_list, summary_stat
 

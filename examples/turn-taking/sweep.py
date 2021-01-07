@@ -18,7 +18,8 @@ from pipeline.common.optimize_pandas import optimize
 def add_finishing_label(df, window):
     print("******Adding in Finishing Label*****")
     df["finishing"] = 0.0
-    df["temp"] = df[["speaking"]].rolling(window, min_periods=1).sum()
+    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window)
+    df["temp"] = df[["speaking"]].rolling(window=indexer, min_periods=1).sum()
     df["temp"][df["temp"] < window] = 1.0
     df["finishing"][(df["speaking"] == 1.0) & (df["temp"] == 1.0)] = 1.0
     return
@@ -233,7 +234,7 @@ SHUFFLE = False
 OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_WINDOW = 20  # Max window the model can look through
-CLOSING_WINDOW = 30
+CLOSING_WINDOW = 45
 ROLL_FEATURES = True
 # Rename to history? 'window' usage is confusing
 
@@ -269,16 +270,23 @@ if "finishing" in CLASSES:
     LOADED_DF.drop(["index", "temp"], inplace=True, axis=1)
 
 if "speaking" not in CLASSES:
-    print("Select only finishing")
-    LOADED_DF = LOADED_DF[LOADED_DF["speaking"] > 0]
-    LOADED_DF.drop(["speaking"], inplace=True, axis=1)
+    # print("Select only finishing")
+    # LOADED_DF = LOADED_DF[LOADED_DF["speaking"] > 0]
+    # LOADED_DF.drop(["speaking"], inplace=True, axis=1)
     print(f"New shape: {LOADED_DF.shape}")
 
 
 LOADED_DF.reset_index(inplace=True, drop=True)
+
+# Check the labels
+# LOADED_DF[["speaking", "finishing"]].iloc[1000:4000].plot.line()
+# plt.show()
+
+
 # Save the df that has been loaded with feather for quick reloading
 FDF_PATH = "./data/feathered_data/tmp.feather"
 LOADED_DF.to_feather(FDF_PATH)
+LOADED_DF = None  # Clear the space
 
 
 # Record experimental details for Neptune
