@@ -312,29 +312,10 @@ class TimeSeriesDataset(Dataset):
     def get_sk_dataset(self, feather_dir="./data/feathered_data"):
         assert self.overlap is False, "Overlap must be false for sklearn"
 
-        feather_path = f"{feather_dir}/{self.data_hash}-{self.window}-sk.feather"
+        f = int(math.floor(self.df.shape[0] / self.window)) * self.window
+        self.sk_data = self.df.values[:f, :].reshape(-1, self.df.shape[1] * self.window)
 
-        # Reuse datasets for faster sklearn performance
-        # if exists(feather_path):
-        if False:
-            print(f"loading feathered sk data: {feather_path}")
-            self.sk_df = pd.read_feather(feather_path)
-        else:
-            print("Reshaping sk data. ", end="")
-            # Flatten dataframe by window for sklearn
-            self.sk_df = pd.concat(
-                [
-                    pd.DataFrame(
-                        self.df.values[w :: self.window],
-                    )
-                    for w in range(self.window)
-                ],
-                axis=1,
-            )
-            self.sk_df.columns = [f"c-{c}" for c in range(len(self.sk_df.columns))]
-            # self.sk_df.to_feather(feather_path)
-
-        print(f"Sk data new shape is {self.sk_df.shape} \n")
+        print(f"Sk data new shape is {self.sk_data.shape} \n")
         new_val_ind = [int(i / self.window) for i in self.val_ind]
         new_test_ind = [int(i / self.window) for i in self.test_ind]
         new_train_ind = [int(i / self.window) for i in self.train_ind]
@@ -344,11 +325,14 @@ class TimeSeriesDataset(Dataset):
         print(f"val: [{min(new_val_ind)}-{max(new_val_ind)}], ", end="")
         print(f"train: [{min(new_train_ind)}-{max(new_train_ind)}]")
 
-        X_val = np.array(self.sk_df.values[new_val_ind])
+        # Sk data new shape is (1245, 275411)
+        # array with shape (39343, 275411)
 
-        X_test = np.array(self.sk_df.values[new_test_ind])
+        X_val = self.sk_data[new_val_ind]
 
-        X_train = np.array(self.sk_df.values[new_train_ind])
+        X_test = self.sk_data[new_test_ind]
+
+        X_train = self.sk_data[new_train_ind]
 
         Y_train = np.array(
             [self.labels.iloc[i + self.window - 1] for i in self.train_ind]

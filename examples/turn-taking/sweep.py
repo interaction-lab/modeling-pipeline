@@ -228,7 +228,7 @@ KEEP_UNWINDOWED_FEATURES = False
 #   have been removed. The list of features to include is placed
 #   in a config file which matches the pattern:
 #   "./config/data_loader_{FEATURES}_config.yml"
-FEATURES = "pearson-ext"  # handcrafted, pearson, etc.
+FEATURES = "pearson-ext"  # handcrafted, pearson, pearson-ext etc.
 
 SHUFFLE = False
 OVERLAP = False  # Should examples be allowed to overlap with each other
