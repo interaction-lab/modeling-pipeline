@@ -1,3 +1,11 @@
+# Branch-specific information:
+## Issue #3 describes the expected behavior/goals of this branch
+### track_v4.py: 
+- given an input folder of json files (the output of openpose, no post-processing needed), a specified number of people to track, and an output folder path, create a separate csv for each person, where each row is the keypoints of that person for a given timestamp.
+- if an input video is specified, the script uses cv2 to draw the locations of the detected people on the video (this video is not saved as of yet... this is only for testing while the script is running)
+- note: if a given person is not detected in a given frame, the row corresponding to that frame will be a copy of the last detected keyframe for that person
+
+# Broader pipeline information (copy of master ReadMe):
 # Interaction Lab Data Processing and Modeling Pipeline
 
 This modeling pipeline is meant to take you from data collection all the way through to using your model in the wild using data science best practices without an overwhelming amount of development required. With this pipeline you don't need to be a machine learning expert to create useful models of human behavior in the HCI and HRI domain.
