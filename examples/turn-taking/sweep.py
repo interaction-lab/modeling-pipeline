@@ -41,6 +41,7 @@ def log_reports(metrics, columns):
             "recall",
             "f1-score",
             "loss",
+            "conf",
         ]
         for c in columns:
             for m in metrics_to_log:
@@ -164,9 +165,14 @@ def objective(trial):
             tdf.normalize_dataset(df, CLASSES)
 
         print("\nCreate Dataset")
+        subsample_perc = trial.suggest_int("sub_sample_neg_perc", 50, 95)
 
         dataset = TimeSeriesDataset(
-            df, labels=CLASSES, shuffle=SHUFFLE, data_hash=FILE_HASH
+            df,
+            labels=CLASSES,
+            shuffle=SHUFFLE,
+            subsample_perc=subsample_perc,
+            # data_hash=FILE_HASH,
         )
 
         dataset.setup_dataset(window=model_params["window"])
@@ -178,6 +184,10 @@ def objective(trial):
         model_params["num_features"] = dataset.df.shape[1]
         model_params["class_weights"] = dataset.weights
         model_params["num_classes"] = len(model_params["target_names"])
+
+        model_params["rolling_window_size"] = rolling_window_size
+        model_params["step_size"] = step_size
+        model_params["subsample_perc"] = subsample_perc
 
         print("\n\n\n******Training and evaluating model******")
         print("Creating Trainer:")
@@ -206,12 +216,12 @@ COMPUTER = "Personal-Laptop"
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
     "xgb",
-    "tree",
-    "tcn",
-    "gru",
-    "forest",
-    "rnn",
-    "lstm",
+    # "tree",
+    # "tcn",
+    # "gru",
+    # "forest",
+    # "rnn",
+    # "lstm",
 ]  # Not working: "mlp", "knn"
 
 NUM_TRIALS = 25  # Number of trials to search for each model
@@ -246,47 +256,68 @@ ROLL_FEATURES = True
 # Set up experimental parameters to be shared with neptune.
 # Hyperparameters are set (and recorded) in optimize().
 # ************************************************************
+FDF_PATH = "./data/feathered_data/tmp.feather"
 rolling_window_config = (
     f"./examples/turn-taking/configs/windowing_{FEATURES}_config.yml"
 )
-df_list = []
-for p in ["left", "right", "center"]:
-    config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_{p}.yml"
+RELOAD_DATA = False
+if RELOAD_DATA:
+    df_list = []
+    df_list_of_lists = []
+    for p in ["left", "right", "center"]:
+        print("loading", p)
+        config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_{p}.yml"
+        data_loader = LoadDF(config)
+        df_list_subset, FILE_HASH = data_loader.load_all_dataframes(
+            df_as_list=True, force_reload=True
+        )
+
+        for df in df_list_subset:
+            c = list(df.columns)
+            c.remove(p)
+            c.append("speaking")
+            df.columns = c
+
+        df_list_of_lists.append(df_list_subset)
+
+    for j in range(len(df_list_of_lists[0])):
+        for i in range(3):
+            df_list.append(df_list_of_lists[i][j])
+
+    # input("continue?")
+
+    print("Concat")
+    total_df = pd.concat(df_list, axis=0)
+    print("Optimize")
+    LOADED_DF = optimize(total_df)
+    print("Final shape: ", LOADED_DF.shape)
+    LOADED_DF = LOADED_DF.fillna(0)
+    LOADED_DF.reset_index(inplace=True)
+
+    # input("continue?")
+
+    if "finishing" in CLASSES:
+        add_finishing_label(LOADED_DF, CLOSING_WINDOW)
+        LOADED_DF.drop(["index", "temp"], inplace=True, axis=1)
+
+    if "speaking" not in CLASSES:
+        # print("Select only finishing")
+        # LOADED_DF = LOADED_DF[LOADED_DF["speaking"] > 0]
+        LOADED_DF.drop(["speaking"], inplace=True, axis=1)
+        print(f"New shape: {LOADED_DF.shape}")
+
+    LOADED_DF.reset_index(inplace=True, drop=True)
+
+    # Check the labels
+    # LOADED_DF[["speaking", "finishing"]].iloc[1000:4000].plot.line()
+    # plt.show()
+
+    # Save the df that has been loaded with feather for quick reloading
+    LOADED_DF.to_feather(FDF_PATH)
+    LOADED_DF = None  # Clear the space
+else:
+    config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_center.yml"
     data_loader = LoadDF(config)
-    LOADED_DF, FILE_HASH = data_loader.load_all_dataframes()
-
-    # print(LOADED_DF.shape)
-    c = list(LOADED_DF.columns)
-    c.remove(p)
-    c.append("speaking")
-    LOADED_DF.columns = c
-    df_list.append(LOADED_DF)
-
-print("Concat and optimize")
-LOADED_DF = optimize(pd.concat(df_list, axis=0))
-
-if "finishing" in CLASSES:
-    add_finishing_label(LOADED_DF, CLOSING_WINDOW)
-    LOADED_DF.drop(["index", "temp"], inplace=True, axis=1)
-
-if "speaking" not in CLASSES:
-    # print("Select only finishing")
-    # LOADED_DF = LOADED_DF[LOADED_DF["speaking"] > 0]
-    # LOADED_DF.drop(["speaking"], inplace=True, axis=1)
-    print(f"New shape: {LOADED_DF.shape}")
-
-
-LOADED_DF.reset_index(inplace=True, drop=True)
-
-# Check the labels
-# LOADED_DF[["speaking", "finishing"]].iloc[1000:4000].plot.line()
-# plt.show()
-
-
-# Save the df that has been loaded with feather for quick reloading
-FDF_PATH = "./data/feathered_data/tmp.feather"
-LOADED_DF.to_feather(FDF_PATH)
-LOADED_DF = None  # Clear the space
 
 
 # Record experimental details for Neptune
@@ -307,6 +338,7 @@ tags = [
     str(CLASSES),
     f"{NUM_TRIALS} Trials",
     f"{data_loader.num_examples} Sessions",
+    "new data org",
 ]
 if OVERLAP:
     tags.append("Overlap")
@@ -319,6 +351,7 @@ if ROLL_FEATURES:
 
 # Start up Neptune, init call takes the name of the sandbox
 # Neptune requires that you have set your api key in the terminal
+print("connecting")
 neptune.init(f"cmbirmingham/{EXP_NAME}")
 neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
 

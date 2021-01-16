@@ -71,16 +71,16 @@ class LoadDF:
                 self.num_examples = len(dir_list)
 
             self.feature_files[fs] = dir_list
-        # print("Files to load: ")
-        # print(self.feature_files)
         for i in self.feature_files.values():
             assert (
                 len(i) == self.num_examples
             ), "   all feature sets must have the same number of files"
 
-    def load_all_dataframes(self, feather_dir="./data/feathered_data"):
+    def load_all_dataframes(
+        self, df_as_list=False, force_reload=False, feather_dir="./data/feathered_data"
+    ):
         feather_path = f"{feather_dir}/{self.data_hash}.feather"
-        if exists(feather_path):
+        if exists(feather_path) and not force_reload:
             print("Reading from feather file")
             df = pd.read_feather(feather_path)
             return df, self.data_hash
@@ -97,6 +97,9 @@ class LoadDF:
                 print(p.shape)
 
             all_data_frames.append(pd.concat(i_data_frames, axis=1))
+        if df_as_list:
+            print("returning list")
+            return all_data_frames, self.data_hash
         df = pd.concat(all_data_frames, axis=0)
         print("Final shape: ", df.shape)
         df = df.fillna(0)
@@ -276,7 +279,8 @@ class TimeSeriesDataset(Dataset):
                     todrop.append(i)
 
             todrop = set(todrop)
-            print("Dropping:", len(todrop), " out of ", len(self.train_ind))
+            print(f"Discarding {100-self.subsample}% of negative examples", end=": ")
+            print(f"Dropping {len(todrop)} out of {len(self.train_ind)}")
             for index in sorted(todrop, reverse=True):
                 del self.train_ind[index]
 
@@ -301,11 +305,10 @@ class TimeSeriesDataset(Dataset):
 
             # We only use training class balance for determining weights
             self.weights.append(0.5 / train_perc)
-
-            print(f"{c} {perc}% of the time overall (len={len(self.labels)})")
-            print(f"{c} {train_perc}% of the time in train (len={len(self.train_ind)})")
-            print(f"{c} {val_perc}% of the time in val (len={len(self.val_ind)})")
-            print(f"{c} {test_perc}% of the time in test (len={len(self.test_ind)})\n")
+            print(f"Dataset balance for {c}: {100*perc:.01f}% of {len(self.labels)}")
+            print(f"Train: {100*train_perc:.01f}% of {len(self.train_ind)}, ", end="")
+            print(f"Val: {100*val_perc:.01f}% of {len(self.val_ind)}, ", end="")
+            print(f"Test: {100*test_perc:.01f}% of {len(self.test_ind)}")
         print("Wights are: ", self.weights)
 
     @timeit

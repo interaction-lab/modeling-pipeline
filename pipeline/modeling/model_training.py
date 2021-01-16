@@ -351,11 +351,11 @@ class ModelTraining:
         self, labels, preds, probs=None, output_dict=True, summary_stat="macro avg"
     ):
         y_pred_list = [a.squeeze().tolist() for a in preds]
-        y_test = [a.squeeze().tolist() for a in labels]
-        if type(y_test[0]) is list:
-            y_test = [[int(a) for a in b] for b in y_test]
+        y_labels = [a.squeeze().tolist() for a in labels]
+        if type(y_labels[0]) is list:
+            y_labels = [[int(a) for a in b] for b in y_labels]
         else:
-            y_test = [int(a) for a in y_test]
+            y_labels = [int(a) for a in y_labels]
 
         if probs is None:
             print("substituting probs")
@@ -384,26 +384,36 @@ class ModelTraining:
         # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
         try:
             # print("calculating roc auc")
-            auROC = roc_auc_score(y_test, probs, average=None)  # average="weighted")
+            auROC = roc_auc_score(y_labels, probs, average=None)  # average="weighted")
         except Exception as e:
             print(e)
-            print(f"labels: {y_test[:20]}")
+            print(f"labels: {y_labels[:20]}")
             print(f"predictions: {y_pred_list[:20]}")
             print(f"probs: {probs[:20]}")
             raise e
 
         # print("calculating AP score")
         AvgPrec = average_precision_score(
-            y_test, probs, average=None
+            y_labels, probs, average=None
         )  # average="weighted")
         # print("calculating report")
         report = classification_report(
-            y_test,
+            y_labels,
             y_pred_list,
             output_dict=output_dict,
-            labels=[i for i in range(len(self.params["target_names"]))],
+            # classification report treats the first label as positive
+            labels=[i for i in range(len(self.params["target_names"]), 0, -1)],
             target_names=self.params["target_names"],
         )
+        if len(self.params["target_names"]) == 1:
+            print(report)
+            tn, fp, fn, tp = confusion_matrix(y_labels, y_pred_list).ravel()
+            print("TP   TN    FP    FN")
+            print(tp, tn, fp, fn)
+            report[self.params["target_names"][0]]["conf-tn"] = tn
+            report[self.params["target_names"][0]]["conf-fp"] = fp
+            report[self.params["target_names"][0]]["conf-fn"] = fn
+            report[self.params["target_names"][0]]["conf-tp"] = tp
 
         if type(auROC) is np.ndarray:
             for i in range(len(self.params["target_names"])):
