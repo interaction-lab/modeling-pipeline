@@ -49,6 +49,7 @@ class LoadDF:
 
         print("Configuration hash:", self.data_hash)
         self.get_file_paths()
+        return
 
     def get_file_paths(self):
         self.feature_files = {}
@@ -75,6 +76,7 @@ class LoadDF:
             assert (
                 len(i) == self.num_examples
             ), "   all feature sets must have the same number of files"
+        return
 
     def load_all_dataframes(
         self, df_as_list=False, force_reload=False, feather_dir="./data/feathered_data"
