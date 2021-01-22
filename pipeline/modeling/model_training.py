@@ -209,26 +209,20 @@ class ModelTraining:
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
             hyperopt_metric = self.fit_sklearn_classifier()
         else:
-            i = 0
-            self.loss_funcs = {}
-            for k, v in self.params["classes_org"].items():
-                if len(v) == 1:
-                    sub_weights = self.dataset.weights[i]
-                    weights = torch.FloatTensor([sub_weights])
-                    weights = weights.float().to(dev)
-                    self.loss_funcs[k] = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
-                if len(v) > 1:
-                    sub_weights = self.dataset.weights[i : i + len(v)]
-                    weights = torch.FloatTensor(sub_weights)
-                    weights = weights.float().to(dev)
-                    self.loss_funcs[k] = torch.nn.CrossEntropyLoss(weight=weights)
+            if self.params["weight_classes"]:
+                weights = torch.FloatTensor(self.dataset.weights)
+                weights = weights.float().to(dev)
+                self.backup_loss_func = torch.nn.BCELoss()
+                self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
+            else:
+                self.loss_func = torch.nn.BCEWithLogitsLoss()
 
             self.model = self.model.float().to(dev)
             self.data_loader = DataLoader(
                 self.dataset, batch_size=self.params["batch_size"], shuffle=True
             )
 
-            self.opt = optim.SGD(self.model.parameters(), lr=self.params["lr"])
+            self.opt = optim.Adam(self.model.parameters(), lr=self.params["lr"])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
 
             hyperopt_metric = self.fit_torch_nn()
@@ -297,32 +291,17 @@ class ModelTraining:
 
         m_list, _ = self.listify_metrics(report, avg_loss)
         s = self.dataset.status
-        print(f"{self.epoch}-{s}: L: {avg_loss:.3f} | F1: {summary_stat:.3f}")
+        print(f"{self.epoch}-{s}: L: {avg_loss:.3f} | Avg-F1 {summary_stat:.3f}")
 
         return m_list, summary_stat
 
     def run_batch(self, xb, yb):
         raw_out = self.model(xb)
-        i = 0
-        losses = []
-        for k, v in self.params["classes_org"].items():
-            if len(v) == 1:  # binary class
-                sub_out = raw_out[:, i]
-                sub_yb = yb[:, i]
-                loss = self.loss_funcs[k](sub_out, sub_yb)
-            if len(v) > 1:  # multi class
-                sub_out = raw_out[:, i : i + len(v)]
-                sub_yb = yb[:, i : i + len(v)]
-                _, labels = sub_yb.max(dim=1)
-                loss = self.loss_funcs[k](sub_out, labels)
-            i += len(v)
-            losses.append(loss.item())
         # BCEwithlogits does the sigmoid
-        # loss = self.BCE_loss_func(raw_out, yb)
-        batch_loss = sum(losses)
-        # print(batch_loss)
+        loss = self.loss_func(raw_out, yb)
+        batch_loss = loss.item()
 
-        # BCEwithlogits occassionally returns a huge loss that can break backprop
+        # BCEwithlogits occassionally returns a huge loss
         # we replace these losses
         if batch_loss > 100:
             loss_alt = self.backup_loss_func(torch.sigmoid(raw_out), yb)
@@ -339,6 +318,11 @@ class ModelTraining:
         probs = torch.sigmoid(raw_out)
         preds = torch.round(probs)
 
+        # print("for input shape (b,w,f):", xb.shape)
+        # print("labels were:", yb)
+        # print("Model output", raw_out)
+        # print("Probs were:", probs)
+        # print("Loss of: ", batch_loss)
         return batch_loss, preds, probs
 
     def fit_sklearn_classifier(self):
@@ -369,12 +353,17 @@ class ModelTraining:
         return m_list, m_df, m_summary
 
     def calculate_metrics(
-        self, labels, preds, probs=None, output_dict=True, summary_stat="macro avg"
+        self,
+        labels,
+        preds,
+        probs=None,
+        output_dict=True,
+        summary_stat="macro avg",
+        verbose=False,
     ):
-        # Prepare labels, predictions, and probabilities
+        # Transform the metrics
         y_pred_list = [a.squeeze().tolist() for a in preds]
         y_labels = [a.squeeze().tolist() for a in labels]
-
         if type(y_labels[0]) is list:
             y_labels = [[int(a) for a in b] for b in y_labels]
         else:
@@ -383,139 +372,107 @@ class ModelTraining:
         if probs is None:
             print("substituting probs")
             probs = y_pred_list
-        elif len(probs) == len(self.params["class_names"]):
-            probs = y_pred_list
         else:
-            # print("A", probs)
             probs = [a.squeeze().tolist() for a in probs]
+            # probs = probs[0]
 
-            if self.params["num_classes"] == 1:
-                if type(probs[0]) is not float:  # Pytorch
-                    probs = [p[1] for p in probs]
+        # Calculate all the metrics
+        # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
+        final_summary = []
+        final_report = {}
+        probs = np.array(probs)
+        y_labels = np.array(y_labels)
+        y_pred_list = np.array(y_pred_list)
 
-            else:  # More than one class
-                # print("B", probs)
-                if len(probs[0]) != self.params["num_classes"]:  # Pytorch
-                    probs_copy = []
-                    for e in range(len(probs[0])):
-                        example = []
-                        for i in range(self.params["num_classes"]):
-                            example.append(probs[i][e][1])
-                        probs_copy.append(example)
-                    probs = probs_copy
+        if self.params["model"] in ["xgb", "tree", "forest"]:
+            # print(f"labels shape {y_labels.shape}")
+            # print(f"preds shape {y_pred_list.shape}")
+            # input(f"probs shape {probs.shape}")
+            # probs = probs[:, :, 0]
+            # probs = np.reshape(probs, y_labels.shape)
+            # input(f"new probs shape {probs.shape}")
+            probs = y_pred_list
 
-        assert len(probs) == len(
-            y_pred_list
-        ), "must make the same number of comparisons"
+        if len(y_labels.shape) == 1:
+            probs = np.expand_dims(probs, 1)
+            y_labels = np.expand_dims(y_labels, 1)
+            y_pred_list = np.expand_dims(y_pred_list, 1)
 
-        try:
-            l_ind = 0
-            total_report = {}
-            sum_list = []
-            for _, v in self.params["classes_org"].items():
-                if len(v) == 1:  # binary class
-                    if len(self.params["classes_org"].keys()) > 1:
-                        sub_probs = np.array(probs)[:, l_ind].tolist()
-                        sub_y_labels = np.array(y_labels)[:, l_ind].tolist()
-                        sub_y_pred_list = np.array(y_pred_list)[:, l_ind].tolist()
-                    else:
-                        sub_probs = probs
-                        sub_y_labels = y_labels
-                        sub_y_pred_list = y_pred_list
-                    report = classification_report(
-                        sub_y_labels,
-                        sub_y_pred_list,
-                        output_dict=output_dict,
-                        # classification report treats the first label as positive
-                        labels=[1],
-                        target_names=v,
-                    )
-                    # print(report)
-                    tn, fp, fn, tp = confusion_matrix(
-                        sub_y_labels, sub_y_pred_list
-                    ).ravel()
-                    # print("TP   TN    FP    FN")
-                    # print(tp, tn, fp, fn)
-                    report[v[0]]["conf-tn"] = tn
-                    report[v[0]]["conf-fp"] = fp
-                    report[v[0]]["conf-fn"] = fn
-                    report[v[0]]["conf-tp"] = tp
+        for i in range(len(self.params["class_names"])):
+            try:
+                sub_probs = probs[:, i].tolist()
+                sub_y_labels = y_labels[:, i].tolist()
+                sub_y_pred_list = y_pred_list[:, i].tolist()
+            except IndexError as e:
+                print(probs[:5])
+                print(y_labels[:5])
+                print(y_pred_list[:5])
+                raise e
 
-                    report[v[0]]["auROC"] = roc_auc_score(
-                        sub_y_labels, sub_probs, average=None
-                    )
-                    report[v[0]]["AP"] = average_precision_score(
-                        sub_y_labels, sub_probs, average=None
-                    )
-                    l_ind += len(v)
+            tn, fp, fn, tp = confusion_matrix(sub_y_labels, sub_y_pred_list).ravel()
 
-                    # summary_stat = report[summary_stat]["f1-score"]
+            try:
+                auROC = roc_auc_score(sub_y_labels, sub_probs, average=None)
+                AvgPrec = average_precision_score(sub_y_labels, sub_probs, average=None)
+            except ValueError as V:
+                print(self.params["class_names"])
+                print("Probs:", probs[:6])
+                print("Labels", y_labels[:6])
+                print("Preds", y_pred_list[:6])
+                print(
+                    f"Label shape {len(sub_y_labels)}, probs shape {len(sub_probs)}, values used"
+                )
+                print(sub_y_labels[:10])
+                print(sub_probs[:10])
 
-                if len(v) > 1:  # multi class
-                    sub_probs = np.array(probs)[:, l_ind : l_ind + len(v)].tolist()
-                    sub_y_labels = np.array(y_labels)[
-                        :, l_ind : l_ind + len(v)
-                    ].tolist()
-                    sub_y_pred_list = np.array(y_pred_list)[
-                        :, l_ind : l_ind + len(v)
-                    ].tolist()
-                    # _, labels = yb.max(dim=1)
+                auROC = 0.510101
+                AvgPrec = 0.10101
+                raise V
 
-                    report = classification_report(
-                        np.argmax(sub_y_labels, axis=1),
-                        np.argmax(sub_y_pred_list, axis=1),
-                        output_dict=output_dict,
-                        labels=[l for l in range(len(v))],
-                        target_names=v,
-                    )
-                    # tn, fp, fn, tp = confusion_matrix(sub_y_labels, sub_y_pred_list).ravel()
-                    # print("TP   TN    FP    FN")
-                    # print(tp, tn, fp, fn)
-                    # report[v[0]]["conf-tn"] = tn
-                    # report[v[0]]["conf-fp"] = fp
-                    # report[v[0]]["conf-fn"] = fn
-                    # report[v[0]]["conf-tp"] = tp
-                    try:
-                        auROC = roc_auc_score(sub_y_labels, sub_probs, average=None)
-                        AvgPrec = average_precision_score(
-                            sub_y_labels, sub_probs, average=None
-                        )
-                    except ValueError as V:
-                        auROC = [0.5 for _ in range(len(v))]
-                        AvgPrec = [0.1 for _ in range(len(v))]
+            report = classification_report(
+                sub_y_labels,
+                sub_y_pred_list,
+                output_dict=output_dict,
+                # labels=[i for i in range(len(self.params["class_names"]))],
+                labels=[1],
+                target_names=[self.params["class_names"][i]],
+            )
+            if verbose:
+                print("\n\n", self.params["class_names"][i])
+                print(f"\nlabels: {sub_y_labels[:20]}")
+                print(f"predictions: {sub_y_pred_list[:20]}\n")
+                print(f"TP {tp}  TN {tn}   FP {fp}   FN {fn}")
+                printable = [round(p, 2) for p in sub_probs[:20]]
+                print(f"probs: {printable}")
+                print(f"auROC: {auROC}, AP: {AvgPrec}")
 
-                    # print(f"labels: {sub_y_labels[:20]}")
-                    # print(f"predictions: {sub_y_pred_list[:20]}")
-                    # print(f"probs: {sub_probs[:20]}")
-                    # print(v, auROC, AvgPrec)
-                    for j in range(len(v)):
-                        report[v[j]]["auROC"] = auROC[j]
-                        report[v[j]]["AP"] = AvgPrec[j]
-                    # summary_stat = report[summary_stat]["f1-score"]
-                    l_ind += len(v)
+            try:
+                report[self.params["class_names"][i]]["auROC"] = auROC
+                report[self.params["class_names"][i]]["AP"] = AvgPrec
 
-                for k, v in report.items():
-                    if k in self.params["class_names"]:
-                        total_report[k] = v
-                    if k == summary_stat:
-                        sum_list.append(v["f1-score"])
-                    # print(k, v)
+                report[self.params["class_names"][i]]["conf-TP"] = tp
+                report[self.params["class_names"][i]]["conf-TN"] = tn
+                report[self.params["class_names"][i]]["conf-FP"] = fp
+                report[self.params["class_names"][i]]["conf-FN"] = fn
 
-            performance = sum(sum_list) / len(sum_list)
-            print(total_report, performance)
-            return total_report, performance
-        except Exception as e:
-            print("ERROR:", e)
-            print(f"labels: {y_labels[:20]}")
-            print(f"predictions: {y_pred_list[:20]}")
-            print(f"probs: {probs[:20]}")
-            raise e
+            except Exception as e:
+                print(report)
+                raise e
+            for k, v in report.items():
+                if "avg" not in k:
+                    print(k, v)
+                    final_report[k] = v
+            final_summary.append(report[summary_stat]["f1-score"])
+
+        print(f"F1 by class {final_summary}")
+        final_stat = sum(final_summary) / len(final_summary)
+        print(f"Avg F1: {final_stat}")
+        return final_report, final_stat
 
     def listify_metrics(self, metrics_dict, loss=0):
         columns = ["loss"]
         values = [loss]
         for k, v in metrics_dict.items():
-            # print(k, v)
             for k2, v2 in v.items():
                 columns.append(f"{k}-{k2}")
                 values.append(v2)

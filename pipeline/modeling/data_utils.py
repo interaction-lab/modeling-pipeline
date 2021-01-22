@@ -55,6 +55,7 @@ class LoadDF:
         self.feature_files = {}
 
         for fs in self.config["feature_sets"]:
+            print(fs)
             config = self.config["feature_files"][fs]
             dir_list = [join(*config["dir_pattern"])]
 
@@ -79,7 +80,11 @@ class LoadDF:
         return
 
     def load_all_dataframes(
-        self, df_as_list=False, force_reload=False, feather_dir="./data/feathered_data"
+        self,
+        df_as_list=False,
+        force_reload=False,
+        feather_dir="./data/feathered_data",
+        overlap=False,
     ):
         feather_path = f"{feather_dir}/{self.data_hash}.feather"
         if exists(feather_path) and not force_reload:
@@ -91,8 +96,12 @@ class LoadDF:
             i_data_frames = []
 
             for fs, file_lists in self.feature_files.items():
+                prefix = "".join([l[0] for l in fs.split("-")])
                 cols = self.config["features"][fs]
-                i_data_frames.append(pd.read_csv(file_lists[i])[cols])
+                df_i = pd.read_csv(file_lists[i])[cols]
+                if prefix != "AS" and overlap:  # (not our speaker annotations)
+                    df_i.columns = [prefix + c for c in df_i.columns]
+                i_data_frames.append(df_i)
 
             print("Shape of loaded frames:")
             for p in i_data_frames:
@@ -104,6 +113,7 @@ class LoadDF:
             return all_data_frames, self.data_hash
         df = pd.concat(all_data_frames, axis=0)
         print("Final shape: ", df.shape)
+        print(df.columns)
         df = df.fillna(0)
         df.reset_index(inplace=True)
         df.to_feather(feather_path)
@@ -143,6 +153,7 @@ class TransformDF:
         if self.config["mean_features"]:
             print("Rolling mean features")
             for f in self.config["mean_features"]:
+                assert f in df.columns, f"{f} not in {df.columns}"
                 mean_col = f + "_mean"
                 df[mean_col] = df[f].rolling(win_size, min_periods=1).mean()
                 # TODO: fix drop duplicating
@@ -151,6 +162,7 @@ class TransformDF:
         if self.config["variance_features"]:
             print("Rolling var features")
             for f in self.config["variance_features"]:
+                assert f in df.columns, f"{f} not in {df.columns}"
                 var_col = f + "_var"
                 df[var_col] = df[f].rolling(win_size, min_periods=1).var()
                 # if not keep_old_features:
@@ -158,6 +170,7 @@ class TransformDF:
         if self.config["median_features"]:
             print("Rolling median features")
             for f in self.config["median_features"]:
+                assert f in df.columns, f"{f} not in {df.columns}"
                 med_col = f + "_median"
                 df[med_col] = df[f].rolling(win_size, min_periods=1).median()
                 # if not keep_old_features:
@@ -165,6 +178,7 @@ class TransformDF:
         if self.config["max_features"]:
             print("Rolling max features")
             for f in self.config["max_features"]:
+                assert f in df.columns, f"{f} not in {df.columns}"
                 max_col = f + "_max"
                 df[max_col] = df[f].rolling(win_size, min_periods=1).max()
                 # if not keep_old_features:
