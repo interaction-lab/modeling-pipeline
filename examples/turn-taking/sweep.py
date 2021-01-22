@@ -212,9 +212,9 @@ def feather_support_group_data(RELOAD_DATA):
     exp_config_base = f"./examples/{EXP_NAME}/configs"
     df_list = []
     df_list_of_lists = []
-    rw_config = f"{exp_config_base}/windowing_{FEATURES}_config_group.yml"
+    rw_config = f"{exp_config_base}/windowing_{FEATURES}_config.yml"
     if RELOAD_DATA:
-        if "pearson-m_hand-f" == FEATURES:
+        if "left" in ALL_CLASSES:
             config = f"{exp_config_base}/data_loader_{FEATURES}_config_group.yml"
             data_loader = LoadDF(config)
             df, _ = data_loader.load_all_dataframes(rename_cols=True)
@@ -246,7 +246,7 @@ def feather_support_group_data(RELOAD_DATA):
         LOADED_DF = LOADED_DF.fillna(0)
         LOADED_DF.reset_index(inplace=True)
 
-        # Add other labels
+        # Add other labels slyh
         if "turns" in LABELS_CLASSES.keys():
             add_turn_labels(LOADED_DF, PREDICTION_WINDOW)
             LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
@@ -289,7 +289,7 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
 EXP_NAME = "turn-taking"
-COMPUTER = "cmb-laptop"
+COMPUTER = "Exp-1"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
@@ -302,18 +302,18 @@ models_to_try = [
     "gru",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 5  # Number of trials to search for each model
+NUM_TRIALS = 15  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 # Each class should be a binary column in the df
 LABELS_CLASSES = {
-    # "speech": ["speaking"],
+    "speech": ["speaking"],
     # "turns": ["taking", "yielding", "holding", "listening"],
     # "uttertype": ["disclosure", "backchannel", "listening"]
-    "speakerl": ["left"],
-    "speakerr": ["right"],
-    "speakerc": ["center"],
-    "speakerb": ["bot"],
+    # "speakerl": ["left"],
+    # "speakerr": ["right"],
+    # "speakerc": ["center"],
+    # "speakerb": ["bot"],
 }
 
 # List of all classes
@@ -332,7 +332,7 @@ OVERLAP = False  # Should examples be allowed to overlap with each other
 # when data includes multiple frames
 SHUFFLE = False
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
-MAX_HISTORY = 20  # Max window the model can look through
+MAX_HISTORY = 30  # Max window the model can look through
 PREDICTION_WINDOW = 45
 MAX_FEATURE_ROLL = 30
 
