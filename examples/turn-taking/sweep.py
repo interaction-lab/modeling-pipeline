@@ -105,7 +105,7 @@ def set_model_params(trial, model):
             # Tree/Forest Params
             "max_depth": trial.suggest_int("max_depth", 3, 18),
             "criterion": trial.suggest_categorical("criterion", ["gini", "entropy"]),
-            "min_samples_leaf": trial.suggest_loguniform("min_samples", 1e-3, 0.5),
+            "min_samples_leaf": trial.suggest_loguniform("min_samples", 1e-4, 0.5),
             "window": trial.suggest_int("window", 1, MAX_HISTORY),
             "max_features": trial.suggest_categorical(
                 "max_features", ["auto", "sqrt", "log2"]
@@ -120,7 +120,7 @@ def set_model_params(trial, model):
         }
     if model in ["xgb"]:
         model_params = {
-            "max_depth": trial.suggest_int("max_depth", 5, 10),
+            "max_depth": trial.suggest_int("max_depth", 3, 13),
             "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
             "window": trial.suggest_int("window", 1, MAX_HISTORY),
             "learning_rate": trial.suggest_loguniform("learning_rate", 0.001, 0.2),
@@ -141,7 +141,7 @@ def set_model_params(trial, model):
         model_params = {
             # TCN Params
             "num_layers": trial.suggest_int("num_layers", 2, 8),
-            "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-4),
+            "lr": trial.suggest_loguniform("learning_rate", 5e-5, 5e-3),
             "batch_size": trial.suggest_int("batch_size", 5, 25),
             "window": trial.suggest_int("window", 3, MAX_HISTORY),
             "kern_size": trial.suggest_int("kern_size", 1, 5),
@@ -181,7 +181,7 @@ def transform_dataset(trial, df, model_params):
         df,
         rolling_window_size,
         KEEP_UNWINDOWED_FEATURES,
-        rolling_window_config,
+        rw_config,
         ALL_CLASSES,
     )
     df = tdf.sub_sample(df, step_size)
@@ -203,55 +203,65 @@ def transform_dataset(trial, df, model_params):
     model_params["subsample_perc"] = subsample_perc
     model_params["num_features"] = dataset.df.shape[1]
     model_params["class_weights"] = dataset.weights
+    neptune.send_metric("dataset_shape", df.shape)
     return dataset, model_params
 
 
 @timeit
-def feather_support_group_data():
+def feather_support_group_data(RELOAD_DATA):
+    exp_config_base = f"./examples/{EXP_NAME}/configs"
     df_list = []
     df_list_of_lists = []
-    for p in ["left", "right", "center"]:
-        print("loading", p)
-        config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_{p}.yml"
+    rw_config = f"{exp_config_base}/windowing_{FEATURES}_config_group.yml"
+    if RELOAD_DATA:
+        if "pearson-m_hand-f" == FEATURES:
+            config = f"{exp_config_base}/data_loader_{FEATURES}_config_group.yml"
+            data_loader = LoadDF(config)
+            df, _ = data_loader.load_all_dataframes(rename_cols=True)
+
+        else:
+            for p in ["left", "right", "center"]:
+                config = f"{exp_config_base}/data_loader_{FEATURES}_config_{p}.yml"
+                data_loader = LoadDF(config)
+                df_list_subset, _ = data_loader.load_all_dataframes(df_as_list=True)
+
+                # Convert lrc speaking labels to "speaking" column headers
+                for df in df_list_subset:
+                    c = list(df.columns)
+                    c.remove(p)
+                    c.append("speaking")
+                    df.columns = c
+
+                df_list_of_lists.append(df_list_subset)
+            # Reorder dataframes
+            for j in range(len(df_list_of_lists[0])):
+                for i in range(3):
+                    df_list.append(df_list_of_lists[i][j])
+            # Join entire list of dataframes
+            df = pd.concat(df_list, axis=0)
+
+        # Compress and optimize dataframe
+        LOADED_DF = optimize(df)
+
+        LOADED_DF = LOADED_DF.fillna(0)
+        LOADED_DF.reset_index(inplace=True)
+
+        # Add other labels
+        if "turns" in LABELS_CLASSES.keys():
+            add_turn_labels(LOADED_DF, PREDICTION_WINDOW)
+            LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
+
+        if "speech" not in LABELS_CLASSES.keys():
+            LOADED_DF.drop(["speaking"], inplace=True, axis=1)
+
+        LOADED_DF.to_feather(FDF_PATH)
+        LOADED_DF = None  # Clear the space
+    else:
+        # We will reuse data loaded before, but we do need to know the config
+        # so we grab a sample config
+        config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_group.yml"
         data_loader = LoadDF(config)
-        df_list_subset, _ = data_loader.load_all_dataframes(
-            df_as_list=True, force_reload=True
-        )
-
-        # Convert lrc speaking labels to "speaking" column headers
-        for df in df_list_subset:
-            c = list(df.columns)
-            c.remove(p)
-            c.append("speaking")
-            df.columns = c
-
-        df_list_of_lists.append(df_list_subset)
-
-    # Reorder dataframes
-    for j in range(len(df_list_of_lists[0])):
-        for i in range(3):
-            df_list.append(df_list_of_lists[i][j])
-
-    # Join entire list of dataframes
-    total_df = pd.concat(df_list, axis=0)
-
-    # Compress and optimize dataframe
-    LOADED_DF = optimize(total_df)
-
-    LOADED_DF = LOADED_DF.fillna(0)
-    LOADED_DF.reset_index(inplace=True)
-
-    # Add other labels
-    if "turns" in LABELS_CLASSES.keys():
-        add_turn_labels(LOADED_DF, PREDICTION_WINDOW)
-        LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
-
-    if "speech" not in LABELS_CLASSES.keys():
-        LOADED_DF.drop(["speaking"], inplace=True, axis=1)
-
-    LOADED_DF.to_feather(FDF_PATH)
-    LOADED_DF = None  # Clear the space
-    return data_loader
+    return data_loader, rw_config, config
 
 
 @timeit
@@ -283,23 +293,27 @@ COMPUTER = "cmb-laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
+    "xgb",
     "forest",
     "tcn",
     "tree",
-    "xgb",
     "rnn",
     "lstm",
     "gru",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 1  # Number of trials to search for each model
+NUM_TRIALS = 5  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 # Each class should be a binary column in the df
 LABELS_CLASSES = {
-    "speech": ["speaking"],
-    "turns": ["taking", "yielding", "holding", "listening"],
+    # "speech": ["speaking"],
+    # "turns": ["taking", "yielding", "holding", "listening"],
     # "uttertype": ["disclosure", "backchannel", "listening"]
+    "speakerl": ["left"],
+    "speakerr": ["right"],
+    "speakerc": ["center"],
+    "speakerb": ["bot"],
 }
 
 # List of all classes
@@ -312,15 +326,15 @@ KEEP_UNWINDOWED_FEATURES = False
 #   have been removed. The list of features to include is placed
 #   in a config file which matches the pattern:
 #   "./config/data_loader_{FEATURES}_config.yml"
-FEATURES = "pearson-ext"  # by-hand, pearson, etc.
+FEATURES = "pearson-m_hand-f"  # by-hand, pearson, etc.
 
 OVERLAP = False  # Should examples be allowed to overlap with each other
 # when data includes multiple frames
 SHUFFLE = False
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
-MAX_HISTORY = 3  # Max window the model can look through
+MAX_HISTORY = 20  # Max window the model can look through
 PREDICTION_WINDOW = 45
-MAX_FEATURE_ROLL = 15
+MAX_FEATURE_ROLL = 30
 
 LOG_TO_NEPTUNE = True
 
@@ -333,18 +347,9 @@ LOG_TO_NEPTUNE = True
 # Hyperparameters are set (and recorded) in optimize().
 # ***********************************************************************************
 FDF_PATH = "./data/feathered_data/tmp.feather"
-rolling_window_config = (
-    f"./examples/turn-taking/configs/windowing_{FEATURES}_config.yml"
-)
 
-RELOAD_DATA = False
-if RELOAD_DATA:
-    data_loader = feather_support_group_data()
-else:
-    # We will reuse data loaded before, but we do need to know the config
-    # so we grab a sample config
-    config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_center.yml"
-    data_loader = LoadDF(config)
+RELOAD_DATA = True
+data_loader, rw_config, config = feather_support_group_data(RELOAD_DATA)
 
 # Record experimental details for Neptune
 params = {
@@ -381,7 +386,7 @@ if LOG_TO_NEPTUNE:
 
 for model in models_to_try:
     tags.append(model)
-    folder_location = "./data/studies/study_{}_{}.pkl".format(model, EXP_NAME)
+    # folder_location = "./data/studies/study_{}_{}.pkl".format(model, EXP_NAME)
     sampler = TPESampler(seed=10)  # Needed for reproducing results
 
     print(f"***********Creating study for {model} ***********")

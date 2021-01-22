@@ -84,7 +84,7 @@ class LoadDF:
         df_as_list=False,
         force_reload=False,
         feather_dir="./data/feathered_data",
-        overlap=False,
+        rename_cols=False,
     ):
         feather_path = f"{feather_dir}/{self.data_hash}.feather"
         if exists(feather_path) and not force_reload:
@@ -99,7 +99,7 @@ class LoadDF:
                 prefix = "".join([l[0] for l in fs.split("-")])
                 cols = self.config["features"][fs]
                 df_i = pd.read_csv(file_lists[i])[cols]
-                if prefix != "AS" and overlap:  # (not our speaker annotations)
+                if prefix != "AS" and rename_cols:  # (not our speaker annotations)
                     df_i.columns = [prefix + c for c in df_i.columns]
                 i_data_frames.append(df_i)
 
