@@ -7,9 +7,9 @@ feature_files:
   Audio-Librosa:
     dir_pattern:
       - /
-      - home
-      - interaction
-      - data
+      - media
+      - chris
+      - M2
       - 2-Processed_Data
       - Audio-Librosa
       - num
@@ -45,9 +45,9 @@ feature_files:
   Video-OpenFace:
     dir_pattern:
       - /
-      - home
-      - interaction
-      - data
+      - media
+      - chris
+      - M2
       - 2-Processed_Data
       - Video-OpenFace
       - num
@@ -87,9 +87,9 @@ feature_files:
   Annotation-Speaker:
     dir_pattern:
       - /
-      - home
-      - interaction
-      - data
+      - media
+      - chris
+      - M2
       - 2-Processed_Data
       - Annotation-Turns
       - num

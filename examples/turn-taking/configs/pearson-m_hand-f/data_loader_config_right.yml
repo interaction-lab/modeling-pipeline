@@ -7,9 +7,9 @@ feature_files:
   Audio-Librosa:
     dir_pattern:
       - /
-      - home
-      - interaction
-      - data
+      - media
+      - chris
+      - M2
       - 2-Processed_Data
       - Audio-Librosa
       - num
@@ -45,9 +45,9 @@ feature_files:
   Video-OpenFace:
     dir_pattern:
       - /
-      - home
-      - interaction
-      - data
+      - media
+      - chris
+      - M2
       - 2-Processed_Data
       - Video-OpenFace
       - num
@@ -87,9 +87,9 @@ feature_files:
   Annotation-Speaker:
     dir_pattern:
       - /
-      - home
-      - interaction
-      - data
+      - media
+      - chris
+      - M2
       - 2-Processed_Data
       - Annotation-Turns
       - num
@@ -151,35 +151,19 @@ features:
     - MFCC_19
     - Chroma_0
     - Chroma_2
-    - Chroma_3
     - Chroma_4
     - Chroma_5
-    - Chroma_7
-    - Chroma_9
+    - Chroma_6
+    - Chroma_8
+    - Chroma_10
+    - Chroma_11
     - Mel_Spect_0
-    - Mel_Spect_1
     - Mel_Spect_2
     - Mel_Spect_4
-    - Mel_Spect_21
-    - Mel_Spect_30
-    - Mel_Spect_32
-    - Mel_Spect_34
-    - Mel_Spect_36
-    - Mel_Spect_38
-    - Mel_Spect_40
-    - Mel_Spect_41
-    - Mel_Spect_42
-    - Mel_Spect_44
-    - Mel_Spect_46
-    - Mel_Spect_50
-    - Mel_Spect_52
-    - Mel_Spect_54
-    - Mel_Spect_56
-    - Mel_Spect_58
-    - Mel_Spect_60
-    - Mel_Spect_65
-    - Mel_Spect_73
-    - Mel_Spect_91
+    - Mel_Spect_5
+    - Mel_Spect_97
+    - Mel_Spect_109
+    - Mel_Spect_127
     - Spect_Contrast_0
     - Spect_Contrast_1
     - Spect_Contrast_2
@@ -189,111 +173,29 @@ features:
     - Spect_Contrast_6
     - Rolloff_0
   Video-OpenFace:
-    - confidence
-    - gaze_angle_x
-    - gaze_angle_y
+    - gaze_0_x
+    - gaze_0_y
+    - gaze_0_z
     - pose_Tx
     - pose_Ty
-    - pose_Tz
-    - pose_Rx
     - pose_Ry
     - pose_Rz
-    - x_2
+    - p_scale
+    - x_1
     - x_8
-    - x_14
-    - x_19
+    - x_15
     - x_21
     - x_22
-    - x_24
-    - x_30
-    - x_33
-    - x_36
-    - x_37
-    - x_38
-    - x_39
-    - x_40
-    - x_41
-    - x_42
-    - x_43
-    - x_44
-    - x_45
-    - x_46
-    - x_47
     - x_48
-    - x_49
-    - x_50
-    - x_51
-    - x_52
-    - x_53
     - x_54
-    - x_55
-    - x_56
-    - x_57
-    - x_58
-    - x_59
-    - x_60
-    - x_61
     - x_62
-    - x_63
-    - x_64
-    - x_65
     - x_66
-    - x_67
-    - y_2
+    - y_1
     - y_8
-    - y_14
-    - y_19
+    - y_15
     - y_21
     - y_22
-    - y_24
-    - y_30
-    - y_33
-    - y_36
-    - y_37
-    - y_38
-    - y_39
-    - y_40
-    - y_41
-    - y_42
-    - y_43
-    - y_44
-    - y_45
-    - y_46
-    - y_47
     - y_48
-    - y_49
-    - y_50
-    - y_51
-    - y_52
-    - y_53
     - y_54
-    - y_55
-    - y_56
-    - y_57
-    - y_58
-    - y_59
-    - y_60
-    - y_61
     - y_62
-    - y_63
-    - y_64
-    - y_65
     - y_66
-    - y_67
-    - AU01_r
-    - AU02_r
-    - AU04_r
-    - AU05_r
-    - AU06_r
-    - AU07_r
-    - AU09_r
-    - AU10_r
-    - AU12_r
-    - AU14_r
-    - AU15_r
-    - AU17_r
-    - AU20_r
-    - AU23_r
-    - AU25_r
-    - AU26_r
-    - AU45_r
