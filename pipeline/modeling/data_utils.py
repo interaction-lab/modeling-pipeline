@@ -116,6 +116,7 @@ class LoadDF:
         print(df.columns)
         df = df.fillna(0)
         df.reset_index(inplace=True)
+        # TODO: if directory does not exist, create directory
         df.to_feather(feather_path)
         return df, self.data_hash
 
@@ -135,14 +136,8 @@ class TransformDF:
         return df
 
     @timeit
-    def apply_rolling_window(
-        self, df, win_size, keep_old_features, feature_config, labels
-    ):
+    def apply_rolling_window(self, df, win_size, keep_old_features, feature_config):
         print("Applying rolling window, size: ", win_size)
-        # if keep_old_features:
-        #     windowed_df = df
-        # else:
-        #     windowed_df = df[labels]
 
         if win_size == 1:
             return df
