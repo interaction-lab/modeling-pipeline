@@ -181,8 +181,8 @@ def transform_dataset(trial, df, model_params):
         df,
         rolling_window_size,
         KEEP_UNWINDOWED_FEATURES,
-        rw_config,
-        ALL_CLASSES,
+        rw_config_path,
+        # ALL_CLASSES,
     )
     df = tdf.sub_sample(df, step_size)
     if NORMALIZE:
@@ -203,65 +203,77 @@ def transform_dataset(trial, df, model_params):
     model_params["subsample_perc"] = subsample_perc
     model_params["num_features"] = dataset.df.shape[1]
     model_params["class_weights"] = dataset.weights
-    neptune.send_metric("dataset_shape", df.shape)
+    if LOG_TO_NEPTUNE:
+        neptune.send_metric("dataset_shape", df.shape[0])
     return dataset, model_params
 
 
 @timeit
-def feather_support_group_data(RELOAD_DATA):
-    exp_config_base = f"./examples/{EXP_NAME}/configs"
-    df_list = []
-    df_list_of_lists = []
-    rw_config = f"{exp_config_base}/windowing_{FEATURES}_config.yml"
-    if RELOAD_DATA:
-        if "left" in ALL_CLASSES:
-            config = f"{exp_config_base}/data_loader_{FEATURES}_config_group.yml"
-            data_loader = LoadDF(config)
-            df, _ = data_loader.load_all_dataframes(rename_cols=True)
+def restructure_and_save_data(exp_config_base):
+    df_list, df_list_of_lists = [], []
 
-        else:
-            for p in ["left", "right", "center"]:
-                config = f"{exp_config_base}/data_loader_{FEATURES}_config_{p}.yml"
-                data_loader = LoadDF(config)
-                df_list_subset, _ = data_loader.load_all_dataframes(df_as_list=True)
+    rw_config_path = f"{exp_config_base}/windowing.yml"
 
-                # Convert lrc speaking labels to "speaking" column headers
-                for df in df_list_subset:
-                    c = list(df.columns)
-                    c.remove(p)
-                    c.append("speaking")
-                    df.columns = c
+    # DF columns: left, right, center, bot
+    if "left" in ALL_CLASSES:
+        rw_config_path = f"{exp_config_base}/group/windowing.yml"
+        dl_config_path = f"{exp_config_base}/group/data_loader.yml"
 
-                df_list_of_lists.append(df_list_subset)
-            # Reorder dataframes
-            for j in range(len(df_list_of_lists[0])):
-                for i in range(3):
-                    df_list.append(df_list_of_lists[i][j])
-            # Join entire list of dataframes
-            df = pd.concat(df_list, axis=0)
+        data_loader = LoadDF(dl_config_path)
+        df, _ = data_loader.load_all_dataframes(
+            rename_cols=True, test_on_two_examples=SHORT_TEST
+        )
 
-        # Compress and optimize dataframe
-        LOADED_DF = optimize(df)
-
-        LOADED_DF = LOADED_DF.fillna(0)
-        LOADED_DF.reset_index(inplace=True)
-
-        # Add other labels slyh
-        if "turns" in LABELS_CLASSES.keys():
-            add_turn_labels(LOADED_DF, PREDICTION_WINDOW)
-            LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
-
-        if "speech" not in LABELS_CLASSES.keys():
-            LOADED_DF.drop(["speaking"], inplace=True, axis=1)
-
-        LOADED_DF.to_feather(FDF_PATH)
-        LOADED_DF = None  # Clear the space
+    # DF columns: speaking
     else:
-        # We will reuse data loaded before, but we do need to know the config
-        # so we grab a sample config
-        config = f"examples/{EXP_NAME}/configs/data_loader_{FEATURES}_config_group.yml"
-        data_loader = LoadDF(config)
-    return data_loader, rw_config, config
+        for p in ["left", "right", "center"]:
+            dl_config_path = f"{exp_config_base}/data_loader_{p}.yml"
+            data_loader = LoadDF(dl_config_path)
+            df_list_subset, _ = data_loader.load_all_dataframes(
+                df_as_list=True, test_on_two_examples=SHORT_TEST
+            )
+
+            # Convert lrc speaking labels to "speaking" column headers
+            for df in df_list_subset:
+                c = list(df.columns)
+                c.remove(p)
+                c.append("speaking")
+                df.columns = c
+
+            df_list_of_lists.append(df_list_subset)
+
+        # Reorder dataframes
+        for j in range(len(df_list_of_lists[0])):
+            for i in range(3):
+                df_list.append(df_list_of_lists[i][j])
+
+        # Join entire list of dataframes
+        df = pd.concat(df_list, axis=0)
+
+    # Compress and optimize dataframe
+    LOADED_DF = optimize(df)
+
+    LOADED_DF = LOADED_DF.fillna(0)
+    LOADED_DF.reset_index(inplace=True)
+
+    # Change labels for turn taking or prediction
+    if exp_type == "turn":
+        add_turn_labels(LOADED_DF, PREDICTION_WINDOW)
+        LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
+
+    if exp_type == "predict":
+        LOADED_DF[ALL_CLASSES] = LOADED_DF[ALL_CLASSES].shift(
+            PREDICTION_WINDOW, fill_value=0
+        )
+
+    # Clean up speaking label if not used
+    if "speaking" not in ALL_CLASSES and "speaking" in LOADED_DF.columns:
+        LOADED_DF.drop(["speaking"], inplace=True, axis=1)
+
+    LOADED_DF.to_feather(FDF_PATH)
+    LOADED_DF = None  # Clear the space
+
+    return data_loader, rw_config_path, dl_config_path
 
 
 @timeit
@@ -272,7 +284,7 @@ def objective(trial):
 
     dataset, model_params = transform_dataset(trial, df, model_params)
 
-    print("\n\n******Training and evaluating model******")
+    print(f"\n\n******Training and evaluating {model}******")
     trainer = ModelTraining(model_params, dataset, trial, verbose=True)
     print(f"Traing and eval on data (size={dataset.df.shape}")
     summary_metric = trainer.train_and_eval_model()
@@ -289,7 +301,8 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
 EXP_NAME = "turn-taking"
-COMPUTER = "Exp-1"
+COMPUTER = "personal-laptop"
+
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
@@ -302,19 +315,44 @@ models_to_try = [
     "gru",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 15  # Number of trials to search for each model
+NUM_TRIALS = 2  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
+SHORT_TEST = True
 
 # Each class should be a binary column in the df
-LABELS_CLASSES = {
-    "speech": ["speaking"],
-    # "turns": ["taking", "yielding", "holding", "listening"],
-    # "uttertype": ["disclosure", "backchannel", "listening"]
-    # "speakerl": ["left"],
-    # "speakerr": ["right"],
-    # "speakerc": ["center"],
-    # "speakerb": ["bot"],
-}
+# ACTIVE SPEAKER - is this person speaking at a given time step:
+#    On a per face level:
+#      "active_speaker": ["speaking"],
+#    Classifying all four at once:
+#      "active_speaker_l": ["left"],
+#      "active_speaker_r": ["right"],
+#      "active_speaker_c": ["center"],
+#      "active_speaker_b": ["bot"],
+
+# PREDICT SPEAKER - will this person speak at a future timestep:
+#    On a per face level:
+#      "predict_speaker": ["speaking"],
+#    Classifying all four at once:
+#      "predict_speaker_l": ["left"],
+#      "predict_speaker_r": ["right"],
+#      "predict_speaker_c": ["center"],
+#      "predict_speaker_b": ["bot"],
+
+# TURN TAKING - What is this person doing now?:
+#    On a per face level:
+#       "turns": ["taking", "yielding", "holding", "listening"],
+#    Classifying all four at once:
+#       TBD
+
+
+# Other classification problems TBD
+#   "uttertype": ["disclosure", "backchannel", "listening"]
+
+# exp_type = "active"
+# exp_type = "predict"
+exp_type = "turn"
+
+LABELS_CLASSES = {"turns": ["taking", "yielding", "holding", "listening"]}
 
 # List of all classes
 ALL_CLASSES = [i for _, v in LABELS_CLASSES.items() for i in v]
@@ -322,21 +360,17 @@ ALL_CLASSES = [i for _, v in LABELS_CLASSES.items() for i in v]
 WEIGHT_CLASSES = True  # Weight loss against class imbalance
 KEEP_UNWINDOWED_FEATURES = False
 
-# Features provide a label for describing how correlated features
-#   have been removed. The list of features to include is placed
-#   in a config file which matches the pattern:
-#   "./config/data_loader_{FEATURES}_config.yml"
-FEATURES = "pearson-m_hand-f"  # by-hand, pearson, etc.
+FEATURES = "pearson-a_hand-v"  # handcrafted, pearson, etc.
 
 OVERLAP = False  # Should examples be allowed to overlap with each other
 # when data includes multiple frames
 SHUFFLE = False
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_HISTORY = 30  # Max window the model can look through
-PREDICTION_WINDOW = 45
+PREDICTION_WINDOW = 30
 MAX_FEATURE_ROLL = 30
 
-LOG_TO_NEPTUNE = True
+LOG_TO_NEPTUNE = False
 
 
 # ***********************************************************************************
@@ -348,8 +382,20 @@ LOG_TO_NEPTUNE = True
 # ***********************************************************************************
 FDF_PATH = "./data/feathered_data/tmp.feather"
 
-RELOAD_DATA = True
-data_loader, rw_config, config = feather_support_group_data(RELOAD_DATA)
+LOAD_FROM_CSV = True
+
+exp_config_base = f"./examples/{EXP_NAME}/configs/{FEATURES}"
+if LOAD_FROM_CSV:
+    print("reloading data!")
+    data_loader, rw_config_path, dl_config_path = restructure_and_save_data(
+        exp_config_base
+    )
+else:
+    # We will reuse data loaded before, but we do need to know the config
+    # so we grab a sample config
+    rw_config_path = f"{exp_config_base}/windowing.yml"
+    dl_config_path = f"{exp_config_base}/group/data_loader.yml"
+    data_loader = LoadDF(dl_config_path)
 
 # Record experimental details for Neptune
 params = {
@@ -364,10 +410,11 @@ params = {
     "max_rolling": MAX_FEATURE_ROLL,
     "pred_window": PREDICTION_WINDOW,
 }
+
 tags = [
     COMPUTER,
     FEATURES,
-    "_".join(ALL_CLASSES),
+    exp_type + ":" + "_".join(ALL_CLASSES),
     f"{NUM_TRIALS} Trials",
     f"{data_loader.num_examples} Sessions",
 ]

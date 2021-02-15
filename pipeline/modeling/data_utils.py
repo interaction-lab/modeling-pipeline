@@ -85,12 +85,17 @@ class LoadDF:
         force_reload=False,
         feather_dir="./data/feathered_data",
         rename_cols=False,
+        test_on_two_examples=False,
     ):
         feather_path = f"{feather_dir}/{self.data_hash}.feather"
-        if exists(feather_path) and not force_reload:
+        # the data has is unique to the config, so if it exists it is identical
+        # to what would be loaded from the CSV
+        if exists(feather_path) and not force_reload and not test_on_two_examples:
             print("Reading from feather file")
             df = pd.read_feather(feather_path)
             return df, self.data_hash
+
+        # Reloading all dataframes from CSV
         all_data_frames = []
         for i in range(self.num_examples):
             i_data_frames = []
@@ -107,17 +112,25 @@ class LoadDF:
             for p in i_data_frames:
                 print(p.shape)
 
+            if test_on_two_examples and i > 0:
+                break
+
             all_data_frames.append(pd.concat(i_data_frames, axis=1))
+
         if df_as_list:
             print("returning list")
             return all_data_frames, self.data_hash
+
+        # Reshape into a massive df with all examples stacked
         df = pd.concat(all_data_frames, axis=0)
         print("Final shape: ", df.shape)
         print(df.columns)
         df = df.fillna(0)
         df.reset_index(inplace=True)
+
         # TODO: if directory does not exist, create directory
-        df.to_feather(feather_path)
+        if not test_on_two_examples:
+            df.to_feather(feather_path)
         return df, self.data_hash
 
 
