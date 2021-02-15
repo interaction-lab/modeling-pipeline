@@ -25,7 +25,7 @@ We recommend you use a virtual environment such as conda for managing dependenci
 
                 `pip install \-r requirements.txt`
 
-Note: Due to hardware dependehoose and install your version of `pytorch <https://pytorch.org/>`_
+Note: Due to hardware dependensies and install your version of `pytorch <https://pytorch.org/>`_
 
 Pipeline Organization
 ===================
