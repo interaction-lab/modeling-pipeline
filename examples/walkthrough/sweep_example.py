@@ -200,6 +200,7 @@ def transform_dataset(trial, df, model_params):
         subsample_perc=subsample_perc,
         # data_hash=FILE_HASH,
     )
+    dataset.setup_dataset(window=model_params["window"])
     model_params["rolling_window_size"] = rolling_window_size
     model_params["step_size"] = step_size
     model_params["subsample_perc"] = subsample_perc
@@ -215,8 +216,6 @@ def objective(trial):
     df = pd.read_feather(FDF_PATH)
 
     dataset, model_params = transform_dataset(trial, df, model_params)
-
-    dataset.setup_dataset(window=model_params["window"])
 
     print("\n\n******Training and evaluating model******")
     trainer = ModelTraining(model_params, dataset, trial, verbose=True)
@@ -234,19 +233,19 @@ def objective(trial):
 # These parameters are used for controlling the sweep as
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
-FDF_PATH = "./data/feathered_data/tmp.feather"
+FDF_PATH = "./data/feathered_data/tmp-w.feather"
 EXP_NAME = "walkthrough"
 COMPUTER = "cmb-laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    "xgb",
-    "tcn",
     "tree",
+    "tcn",
+    "xgb",
     "forest",
-    "rnn",
-    "lstm",
-    "gru",
+    # "rnn",
+    # "lstm",
+    # "gru",
 ]  # Not working: "mlp", "knn"
 
 NUM_TRIALS = 2  # Number of trials to search for each model
@@ -271,7 +270,7 @@ KEEP_UNWINDOWED_FEATURES = False
 #   "./config/data_loader_{FEATURES}_config.yml"
 FEATURES = "pearson"  # by-hand, pearson, etc.
 
-SHUFFLE = False
+SHUFFLE = True
 OVERLAP = False  # Should examples be allowed to overlap with each other
 # when data includes multiple frames
 
@@ -298,6 +297,8 @@ if "turns" in LABELS_CLASSES.keys():
 
 if "speech" not in LABELS_CLASSES.keys():
     LOADED_DF.drop(["speaking"], inplace=True, axis=1)
+
+LOADED_DF.to_feather(FDF_PATH)
 
 # Record experimental details for Neptune
 params = {
