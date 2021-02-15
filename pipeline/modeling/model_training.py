@@ -208,7 +208,7 @@ class ModelTraining:
 
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
             hyperopt_metric = self.fit_sklearn_classifier()
-        else:
+        else:  # if the model is a pytorch model
             if self.params["weight_classes"]:
                 weights = torch.FloatTensor(self.dataset.weights)
                 weights = weights.float().to(dev)
@@ -511,7 +511,6 @@ class ModelTraining:
                         elif "f1-score" in c:
                             print(f"{k}_{c}", df[c].iloc[-1])
 
-        print("create graphs")
         if self.params["model"] in ["forest", "tree", "mlp", "knn", "xgb"]:
             df_train = pd.DataFrame([self.metrics["train"]], columns=self.columns)
             df_val = pd.DataFrame([self.metrics["val"]], columns=self.columns)
@@ -521,6 +520,7 @@ class ModelTraining:
 
         print(df_val.shape)
         if df_val.shape[0] == 1:
+            print("No graphs to plot for trainers without epochs")
             # Don't plot single point graphs
             return
         else:

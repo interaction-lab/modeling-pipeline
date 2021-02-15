@@ -16,13 +16,13 @@ def ensure_destination_exists(dst_file_path: str):
     Args:
         dst_file_path (str): Full path of a file
     """
-    dst_dir = "/".join(dst_file_path.split('/')[:-1])
+    dst_dir = "/".join(dst_file_path.split("/")[:-1])
     if not os.path.isdir(dst_dir):
         pathlib.Path(dst_dir).mkdir(parents=True, exist_ok=True)
     return
 
 
-def move_dir(src: str, dst: str, pattern: str = '*'):
+def move_dir(src: str, dst: str, pattern: str = "*"):
     """Move files from src to dst if they match patterns
 
     Args:
@@ -55,8 +55,11 @@ def get_dirs_from_config(config: str = "./config/dir_sample_config.yml"):
 
     dir_list = [os.path.join(*config["dir_pattern"])]
 
+    # TODO: Update to handle single file case
     for sub_dir, subs in config["substitutes"].items():
-        assert sub_dir in config["dir_pattern"], f"substitution ({sub_dir}) must have a target match in the path {config['dir_pattern']}"
+        assert (
+            sub_dir in config["dir_pattern"]
+        ), f"substitution ({sub_dir}) must have a target match in the path {config['dir_pattern']}"
         new_dir_list = []
         for p in dir_list:
             for new_dir in subs:
@@ -65,7 +68,11 @@ def get_dirs_from_config(config: str = "./config/dir_sample_config.yml"):
     return dir_list
 
 
-def move_files(src_config: str = "./config/dir_src_config.yml", dst_config: str = "./config/dir_dst_config.yml", pattern="*"):
+def move_files(
+    src_config: str = "./config/dir_src_config.yml",
+    dst_config: str = "./config/dir_dst_config.yml",
+    pattern="*",
+):
     """Moves files from src to dst as described in config patterns
 
     Uses get_dirs_from_config and move_dir to move files on any OS.
@@ -147,8 +154,8 @@ def audio_from_video(src_video: str, dst_audio: str):
 
 def main():
     """If you would like to use any of the utility functions provided here
-        independently, just uncomment the appropriate function, set the configuration
-        for you computer, and run this file.
+    independently, just uncomment the appropriate function, set the configuration
+    for you computer, and run this file.
     """
     # get_dirs_from_config("./config/dir_src_config.yml")
     # move_files(src_config="./config/dir_src_config.yml", dst_config="./config/dir_dst_config.yml", pattern="*.json")
