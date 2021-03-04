@@ -41,7 +41,7 @@ def main(json_path, csv_path):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('-i', '--input', type = str, help='path to the json  with openpose data')
-    parser.add_argument('-o', '--output', type = str, help='name of the csv to storing resulting dataframe')
+    parser.add_argument('-i', '--input', type = str, help='path to the json folder with openpose data')
+    parser.add_argument('-o', '--output', type = str, help='name of the csv to be created for storing resulting dataframe')
     args = parser.parse_args()
     main(args.input, args.output)
