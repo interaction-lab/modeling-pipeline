@@ -31,6 +31,7 @@ import matplotlib.pyplot as plt
 
 import sys
 from tqdm import tqdm
+import math
 
 if not sys.warnoptions:
     import warnings
@@ -467,6 +468,10 @@ class ModelTraining:
         print(f"F1 by class {final_summary}")
         final_stat = sum(final_summary) / len(final_summary)
         print(f"Avg F1: {final_stat}")
+        if verbose:
+            self.graph_model_output(
+                y_labels, y_pred_list, probabilities=probs, title=title
+            )
         return final_report, final_stat
 
     def listify_metrics(self, metrics_dict, loss=0):
@@ -540,6 +545,56 @@ class ModelTraining:
             plt.show()
             # experiment.log_image("diagrams", fig)
         return
+
+    def graph_model_output(
+        self,
+        actual_labels,
+        predicted_labels,
+        probabilities=None,
+        max_graph_size=1000,
+        title="Graph Title",
+    ):
+        # TODO: Add saving of outputs
+        assert (
+            actual_labels is not None and predicted_labels is not None
+        ), "Invalid inputs to graph model, must not be none!"
+
+        input_length = len(actual_labels)
+        if input_length > max_graph_size:
+            for i in range(math.ceil(input_length / max_graph_size)):
+                plt.figure(figsize=(30, 5))
+                plt.plot(
+                    actual_labels[max_graph_size * i : max_graph_size * (i + 1)],
+                    color="green",
+                    label="original",
+                )
+                plt.plot(
+                    predicted_labels[max_graph_size * i : max_graph_size * (i + 1)]
+                    * 0.9,
+                    color="red",
+                    label="predicted",
+                )  # times 0.9 to differentiate lines
+                if probabilities is not None:
+                    plt.plot(
+                        probabilities[max_graph_size * i : max_graph_size * (i + 1)],
+                        color="yellow",
+                        label="probability",
+                    )
+
+                plt.legend()
+                plt.set_title(title)
+                plt.show()
+        else:
+            plt.figure(figsize=(30, 5))
+            plt.plot(actual_labels, color="green", label="original")
+            plt.plot(
+                predicted_labels * 0.9, color="red", label="predicted"
+            )  # times 0.9 to differentiate lines
+            if probabilities is not None:
+                plt.plot(probabilities, color="yellow", label="probability")
+
+            plt.legend()
+            plt.show()
 
 
 if __name__ == "__main__":

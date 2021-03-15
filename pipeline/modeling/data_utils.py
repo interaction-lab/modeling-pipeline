@@ -395,8 +395,8 @@ class TimeSeriesDataset(Dataset):
         return (
             torch.FloatTensor(
                 self.df.iloc[ind[index] : ind[index] + self.window].values
-            ),
-            torch.FloatTensor(self.labels.iloc[ind[index] + self.window - 1]),
+            ),  # xb
+            torch.FloatTensor(self.labels.iloc[ind[index] + self.window - 1]),  # yb
         )
 
 
