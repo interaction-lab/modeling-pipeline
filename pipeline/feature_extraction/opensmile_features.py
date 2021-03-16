@@ -21,8 +21,8 @@ def get_opensmile_features(src_audio: str, dst_csv: str):
     """
     signal, sampling_rate = audiofile.read(src_audio, always_2d=True)
     smile = opensmile.Smile(
-        feature_set=opensmile.FeatureSet.eGeMAPSv01b,
-        feature_level=opensmile.FeatureLevel.LowLevelDescriptors_Deltas,
+        feature_set=opensmile.FeatureSet.eGeMAPSv02,
+        feature_level=opensmile.FeatureLevel.LowLevelDescriptors, # deptricated? LowLevelDescriptors_Deltas
     )
     opensmile.FeatureLevel.LowLevelDescriptors
     # y = smile.process_file(src_audio)
