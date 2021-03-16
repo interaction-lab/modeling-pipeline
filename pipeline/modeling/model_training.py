@@ -26,6 +26,7 @@ from sklearn.metrics import (
 
 import xgboost as xgb
 from .model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
+from .model_monitoring import EarlyStopping
 
 import matplotlib.pyplot as plt
 
@@ -35,7 +36,6 @@ import math
 
 if not sys.warnoptions:
     import warnings
-
     warnings.simplefilter("ignore")
 
 
@@ -47,72 +47,30 @@ print(f"Cuda? {torch.cuda.is_available()}")
 dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
-class EarlyStopping(object):
-    # Credit to https://gist.github.com/stefanonardo/693d96ceb2f531fa05db530f3e21517d
-    def __init__(
-        self, name, mode="min", min_delta=0.001, patience=10, percentage=False
-    ):
-        self.name = name
-        self.mode = mode
-        self.min_delta = min_delta
-        self.patience = patience
-        self.best = None
-        self.num_bad_epochs = 0
-        self.is_better = None
-        self._init_is_better(mode, min_delta, percentage)
-
-        if patience == 0:
-            self.is_better = lambda a, b: True
-            self.step = lambda a: False
-
-    def step(self, metric):
-        if self.best is None:
-            self.best = metric
-            return False
-
-        if np.isnan(metric):
-            print("NAN score, exiting")
-            return True
-
-        if self.is_better(metric, self.best):
-            print("updating best:", metric)
-            self.num_bad_epochs = 0
-            self.best = metric
-        else:
-            print("thinning patience")
-            self.num_bad_epochs += 1
-        print(self.num_bad_epochs, self.patience)
-        if self.num_bad_epochs >= self.patience:
-            print(f"{self.name} lost patience")
-            return True
-
-        return False
-
-    def _init_is_better(self, mode, min_delta, percentage):
-        if mode not in {"min", "max"}:
-            raise ValueError("mode " + mode + " is unknown!")
-        if not percentage:
-            if mode == "min":
-                self.is_better = lambda a, best: a < best - min_delta
-            if mode == "max":
-                self.is_better = lambda a, best: a > best + min_delta
-        else:
-            if mode == "min":
-                self.is_better = lambda a, best: a < best - (best * min_delta / 100)
-            if mode == "max":
-                self.is_better = lambda a, best: a > best + (best * min_delta / 100)
-
-
 class ModelTraining:
+    """The ModelTraing class is intended as model and dataset agnostic trainer (currently supporting time series datasets)
+    """
     def __init__(self, params, dataset, trial=None, verbose=True):
         self.trial = trial
         self.dataset = dataset
         self.verbose = verbose
+        self.metrics = {"train": [], "val": [], "test": []}
+        self.model = self._load_model_with_params(params)
+
+
+    def _load_model_with_params(self, params):
+        """Create model object with specified parameters
+
+        Args:
+            params (dict): dictionary of parameters for training a model
+        """
         self.params = params
-        print(f"starting round with these params: \n {params}")
+        print(f"starting round with these params:")
+        for k,v in params.items():
+            print(f"\t{k}: {v}")
 
         if params["model"] == "tcn":
-            self.model = TCNModel(
+            model = TCNModel(
                 num_channels=[params["num_features"]] * params["num_layers"],
                 window=params["window"],
                 kernel_size=params["kern_size"],
@@ -120,7 +78,7 @@ class ModelTraining:
                 dropout=params["dropout"],
             )
         elif params["model"] == "rnn":
-            self.model = RNNModel(
+            model = RNNModel(
                 hidden_size=params["kern_size"],
                 input_size=params["num_features"],
                 num_layers=params["num_layers"],
@@ -128,7 +86,7 @@ class ModelTraining:
                 dropout=params["dropout"],
             )
         elif params["model"] == "lstm":
-            self.model = LSTMModel(
+            model = LSTMModel(
                 input_size=params["num_features"],
                 hidden_size=params["kern_size"],
                 num_layers=params["num_layers"],
@@ -136,7 +94,7 @@ class ModelTraining:
                 dropout=params["dropout"],
             )
         elif params["model"] == "gru":
-            self.model = GRUModel(
+            model = GRUModel(
                 input_size=params["num_features"],
                 hidden_size=params["kern_size"],
                 num_layers=params["num_layers"],
@@ -144,7 +102,7 @@ class ModelTraining:
                 dropout=params["dropout"],
             )
         elif params["model"] == "tree":
-            self.model = DecisionTreeClassifier(
+            model = DecisionTreeClassifier(
                 max_depth=params["max_depth"],
                 criterion=params["criterion"],
                 min_samples_leaf=params["min_samples_leaf"],
@@ -152,7 +110,7 @@ class ModelTraining:
                 class_weight="balanced",
             )
         elif params["model"] == "forest":
-            self.model = RandomForestClassifier(
+            model = RandomForestClassifier(
                 max_depth=params["max_depth"],
                 criterion=params["criterion"],
                 min_samples_leaf=params["min_samples_leaf"],
@@ -163,7 +121,7 @@ class ModelTraining:
         elif params["model"] == "xgb":
             # Add single and multiclass options
             if params["num_classes"] > 1:
-                self.model = MultiOutputClassifier(
+                model = MultiOutputClassifier(
                     xgb.XGBClassifier(
                         objective="multi:softprob",
                         max_depth=params["max_depth"],
@@ -174,7 +132,7 @@ class ModelTraining:
                     )
                 )
             else:
-                self.model = xgb.XGBClassifier(
+                model = xgb.XGBClassifier(
                     objective="binary:logistic",
                     max_depth=params["max_depth"],
                     num_class=params["num_classes"],
@@ -183,7 +141,7 @@ class ModelTraining:
                     verbosity=1,
                 )
         elif params["model"] == "knn":
-            self.model = KNeighborsClassifier(
+            model = KNeighborsClassifier(
                 n_neighbors=params["n_neighbors"],
                 leaf_size=params["leaf_size"],
                 verbose=True,
@@ -192,7 +150,7 @@ class ModelTraining:
             hidden_layer_sizes = tuple(
                 [params["width"] // i for i in range(1, params["depth"] + 1)]
             )
-            self.model = MLPClassifier(
+            model = MLPClassifier(
                 solver=params["solver"],
                 activation=params["activation"],
                 learning_rate="adaptive",
@@ -200,39 +158,52 @@ class ModelTraining:
                 hidden_layer_sizes=hidden_layer_sizes,
                 verbose=True,
             )
+        return model
 
-        self.metrics = {"train": [], "val": [], "test": []}
-        return
 
     @timeit
     def train_and_eval_model(self):
+        """Setup and train model on the provided datset
 
+        Will call training functions (fit_) for sklearn classifiers or torch 
+        neural networks.
+
+        Returns:
+            float: performance of the metric being optimized
+        """
+
+        ### SKLearn Models
         if self.params["model"] in ["xgb", "tree", "forest", "knn", "mlp"]:
             hyperopt_metric = self.fit_sklearn_classifier()
-        else:  # if the model is a pytorch model
-            if self.params["weight_classes"]:
-                weights = torch.FloatTensor(self.dataset.weights)
-                weights = weights.float().to(dev)
-                self.backup_loss_func = torch.nn.BCELoss()
-                self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
-            else:
-                self.loss_func = torch.nn.BCEWithLogitsLoss()
 
-            self.model = self.model.float().to(dev)
-            self.data_loader = DataLoader(
-                self.dataset, batch_size=self.params["batch_size"], shuffle=True
-            )
-
-            self.opt = optim.Adam(self.model.parameters(), lr=self.params["lr"])
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
-
+        ### PyTorch Models
+        else:
             hyperopt_metric = self.fit_torch_nn()
         return hyperopt_metric
 
+
     def fit_torch_nn(self):
-        print(f"Fitting PyTorch Classifier - {self.params['model']}")
+
+        ### Setup Torch Model Training
+        if self.params["weight_classes"]:
+            weights = torch.FloatTensor(self.dataset.weights).float().to(dev)
+            weights = weights
+            self.backup_loss_func = torch.nn.BCELoss()
+            self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
+        else:
+            self.loss_func = torch.nn.BCEWithLogitsLoss()
+
+        self.model = self.model.float().to(dev)
+
+        self.data_loader = DataLoader(
+            self.dataset, batch_size=self.params["batch_size"], shuffle=True
+        )
+
+        self.opt = optim.Adam(self.model.parameters(), lr=self.params["lr"])
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
         es_los = EarlyStopping("val_loss", patience=self.params["patience"])
 
+        print(f"Fitting PyTorch Classifier - {self.params['model']}")
         for self.epoch in tqdm(range(self.params["epochs"])):
 
             # ******** TRAINING ********
@@ -470,7 +441,7 @@ class ModelTraining:
         print(f"Avg F1: {final_stat}")
         if verbose:
             self.graph_model_output(
-                y_labels, y_pred_list, probabilities=probs, title=title
+                y_labels, y_pred_list, probabilities=probs, title="title"
             )
         return final_report, final_stat
 
@@ -554,6 +525,7 @@ class ModelTraining:
         max_graph_size=1000,
         title="Graph Title",
     ):
+        print("Graphing model output")
         # TODO: Add saving of outputs
         assert (
             actual_labels is not None and predicted_labels is not None
