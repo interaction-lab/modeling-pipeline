@@ -29,3 +29,5 @@ optuna
 opensmile
 librosa
 tqdm
+
+mediapipe
