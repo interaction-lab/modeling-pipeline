@@ -1,4 +1,5 @@
 from os.path import join, exists
+from os import makedirs
 import yaml
 
 import torch
@@ -130,6 +131,8 @@ class LoadDF:
 
         # TODO: if directory does not exist, create directory
         if not test_on_two_examples:
+            if not exists(feather_dir):
+                makedirs(feather_dir)
             df.to_feather(feather_path)
         return df, self.data_hash
 
@@ -335,40 +338,58 @@ class TimeSeriesDataset(Dataset):
             print(f"Test: {100*test_perc:.01f}% of {len(self.test_ind)}")
         print("Wights are: ", self.weights)
 
-    @timeit
-    def get_sk_dataset(self, feather_dir="./data/feathered_data"):
+    def transform_sk_dataset(self, feather_dir="./data/feathered_data"):
         assert self.overlap is False, "Overlap must be false for sklearn"
+        # TODO allow for larger datasets so overlap is acceptable
 
-        f = int(math.floor(self.df.shape[0] / self.window)) * self.window
-        self.sk_data = self.df.values[:f, :].reshape(-1, self.df.shape[1] * self.window)
+        last = int(math.floor(self.df.shape[0] / self.window)) * self.window
+        self.sk_data = self.df.values[:last, :].reshape(-1, self.df.shape[1] * self.window)
+
+        # TODO: save reshaped dataset 
+        # if not exists(feather_dir):
+        #     makedirs(feather_dir)
+        # self.sk_data.to_feather(feather_dir+"/sk-temp.feather")
+        # self.sk_data = None
+
 
         print(f"Sk data new shape is {self.sk_data.shape} \n")
-        new_val_ind = [int(i / self.window) for i in self.val_ind]
-        new_test_ind = [int(i / self.window) for i in self.test_ind]
-        new_train_ind = [int(i / self.window) for i in self.train_ind]
+        self.new_val_ind = [int(i / self.window) for i in self.val_ind]
+        self.new_test_ind = [int(i / self.window) for i in self.test_ind]
+        self.new_train_ind = [int(i / self.window) for i in self.train_ind]
+        return
 
-        print("Updated Indices:")
-        print(f"test: [{min(new_test_ind)}-{max(new_test_ind)}], ", end="")
-        print(f"val: [{min(new_val_ind)}-{max(new_val_ind)}], ", end="")
-        print(f"train: [{min(new_train_ind)}-{max(new_train_ind)}]")
+
+    @timeit
+    def get_sk_dataset(self, feather_dir="./data/feathered_data"):
+        assert self.status in [
+            "training",
+            "validation",
+            "testing",
+        ], "status must be testing, validation, or training"
+
+        self.transform_sk_dataset()
+
+        # self.sk_data = pd.read_feather(feather_dir+"/sk-temp.feather")
 
         # Sk data new shape is (1245, 275411)
         # array with shape (39343, 275411)
+        if self.status == "training":
+            X = self.sk_data[self.new_train_ind]
+            Y = np.array(
+                [self.labels.iloc[i + self.window - 1] for i in self.train_ind]
+            )
 
-        X_val = self.sk_data[new_val_ind]
+        if self.status == "validation":
+            X= self.sk_data[self.new_val_ind]
+            Y= np.array([self.labels.iloc[i + self.window - 1] for i in self.val_ind])
 
-        X_test = self.sk_data[new_test_ind]
+        if self.status == "testing":
+            X = self.sk_data[self.new_test_ind]
+            Y = np.array(
+                [self.labels.iloc[i + self.window - 1] for i in self.test_ind]
+            )
+        return X, Y
 
-        X_train = self.sk_data[new_train_ind]
-
-        Y_train = np.array(
-            [self.labels.iloc[i + self.window - 1] for i in self.train_ind]
-        )
-        Y_val = np.array([self.labels.iloc[i + self.window - 1] for i in self.val_ind])
-        Y_test = np.array(
-            [self.labels.iloc[i + self.window - 1] for i in self.test_ind]
-        )
-        return X_train, X_val, X_test, Y_test, Y_train, Y_val
 
     def __len__(self):
         if self.status == "training":

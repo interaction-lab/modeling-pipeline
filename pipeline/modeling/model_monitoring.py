@@ -1,4 +1,4 @@
-
+import numpy as np
 
 
 class EarlyStopping(object):
@@ -30,7 +30,7 @@ class EarlyStopping(object):
         self.best_so_far = None
         self.num_epochs_w_no_improvement = 0
         self.is_better = None
-        self._init_is_better(mode, min_delta, patience, percentage)
+        self._init_is_better()
 
     def _init_is_better(self):
         """ Set up the is_better lambda function for checking if the metric has improved

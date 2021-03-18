@@ -1,42 +1,34 @@
-# from sklearn.utils import class_weight
-import torch
-from torch.utils.data import DataLoader
-from torch import optim
-import pandas as pd
-import numpy as np
-from .data_utils import TimeSeriesDataset, LoadDF, timeit
-
-from sklearn.utils.class_weight import compute_sample_weight
-from sklearn.neural_network import MLPClassifier
-from sklearn.neighbors import KNeighborsClassifier
-
-# from sklearn.linear_model import SGDClassifier
-from sklearn.ensemble import RandomForestClassifier
-
-# from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.multioutput import MultiOutputClassifier
-from sklearn.metrics import (
-    confusion_matrix,
-    classification_report,
-    roc_auc_score,
-    plot_confusion_matrix,
-    average_precision_score,
-)
-
-import xgboost as xgb
-from .model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
-from .model_monitoring import EarlyStopping
-
-import matplotlib.pyplot as plt
-
 import sys
 from tqdm import tqdm
-import math
+import pandas as pd
+import numpy as np
 
 if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
+
+import torch
+from torch.utils.data import DataLoader
+from torch import optim
+
+from sklearn.utils.class_weight import compute_sample_weight
+
+
+### Model Imports ###
+from sklearn.neural_network import MLPClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.multioutput import MultiOutputClassifier
+# from sklearn.linear_model import SGDClassifier
+# from sklearn.ensemble import GradientBoostingClassifier
+import xgboost as xgb
+from .model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
+
+
+from .model_monitoring import EarlyStopping
+from .data_utils import TimeSeriesDataset, LoadDF, timeit
+from .model_performance import ModelMetrics
 
 
 # Needed to reproduce
@@ -56,6 +48,7 @@ class ModelTraining:
         self.verbose = verbose
         self.metrics = {"train": [], "val": [], "test": []}
         self.model = self._load_model_with_params(params)
+        self.mm = ModelMetrics(params)
 
 
     def _load_model_with_params(self, params):
@@ -160,7 +153,6 @@ class ModelTraining:
             )
         return model
 
-
     @timeit
     def train_and_eval_model(self):
         """Setup and train model on the provided datset
@@ -181,13 +173,22 @@ class ModelTraining:
             hyperopt_metric = self.fit_torch_nn()
         return hyperopt_metric
 
-
     def fit_torch_nn(self):
+        """Setup and train a NN with pytorch
 
+        Includes dataset weighting, ADAM optimizer with learning rate scheduling,
+        and early stopping to prevent overfitting.
+
+        Each epoch will run on the training and validation sets, and the final run
+        will include the test set. The final return value is the metrics performance
+        on the validation set (used for hyperpameter tuning).
+
+        Returns:
+            float: performance metric on the validation set.
+        """
         ### Setup Torch Model Training
         if self.params["weight_classes"]:
             weights = torch.FloatTensor(self.dataset.weights).float().to(dev)
-            weights = weights
             self.backup_loss_func = torch.nn.BCELoss()
             self.loss_func = torch.nn.BCEWithLogitsLoss(pos_weight=weights)
         else:
@@ -201,9 +202,10 @@ class ModelTraining:
 
         self.opt = optim.Adam(self.model.parameters(), lr=self.params["lr"])
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.opt)
+
         es_los = EarlyStopping("val_loss", patience=self.params["patience"])
 
-        print(f"Fitting PyTorch Classifier - {self.params['model']}")
+        print(f"\nFitting PyTorch Classifier - *** {self.params['model']} *** ")
         for self.epoch in tqdm(range(self.params["epochs"])):
 
             # ******** TRAINING ********
@@ -213,7 +215,8 @@ class ModelTraining:
             train_metric_values, _ = self.run_epoch()
 
             self.metrics["train"].append(train_metric_values)
-            loss_index = self.columns.index("loss")
+            loss_index = self.metrics_names.index("loss")
+            # ******** TRAINING ********
 
             # ******** EVALUATION ********
             self.model.eval()
@@ -224,6 +227,7 @@ class ModelTraining:
 
                 self.metrics["val"].append(val_metric_values)
                 val_loss = val_metric_values[loss_index]
+            # ******** EVALUATION ********
 
             if self.trial:
                 self.trial.report(val_sum_stat, step=self.epoch)
@@ -238,13 +242,25 @@ class ModelTraining:
                 with torch.no_grad():
                     self.metrics["test"], _ = self.run_epoch()
                 return val_sum_stat
+            # ******** TESTING ********
 
             self.scheduler.step(val_sum_stat)
 
     def run_epoch(self):
+        """Run the model on the dataset
+
+        Includes backprop if dataset is 'training'
+
+        Will take model outputs and calculate all performance metrics.
+
+        Returns:
+            list: all the metrics organized as a list
+            float: the summary statistic to keep
+        """
         total_loss = 0
         labels, predictions, probs = [], [], []
 
+        ### Run through all the batches
         for xb, yb in tqdm(self.data_loader):
             batch_loss, batch_predictions, batch_probs = self.run_batch(
                 xb.to(dev), yb.to(dev)
@@ -255,26 +271,41 @@ class ModelTraining:
             probs.append(batch_probs.cpu().detach().numpy())
             predictions.append(batch_predictions.cpu().detach().numpy())
 
+        ### Calculate the loss for this epoch
         avg_loss = total_loss / len(self.data_loader)
 
-        report, summary_stat = self.calculate_metrics(
+        ### Calculate all metrics of interest
+        report, summary_stat = self.mm.calculate_metrics(
             np.vstack(labels), np.vstack(predictions), np.vstack(probs)
         )
 
-        m_list, _ = self.listify_metrics(report, avg_loss)
-        s = self.dataset.status
-        print(f"{self.epoch}-{s}: L: {avg_loss:.3f} | Avg-F1 {summary_stat:.3f}")
+        m_list, self.metrics_names = self.mm.listify_metrics(report, avg_loss)
+
+        print(f"{self.epoch}-{self.dataset.status}: L: {avg_loss:.3f} | Avg-F1 {summary_stat:.3f}")
 
         return m_list, summary_stat
 
-    def run_batch(self, xb, yb):
+    def run_batch(self, xb, yb, debug=False):
+        """Run model on batch input, backprop if training
+
+        Args:
+            xb (tensor): model input
+            yb (tensor): labels
+            debug (bool, optional): print full input and output of the model. Defaults to False.
+
+        Returns:
+            float: loss for this batch
+            tensor: model predictions
+            tensor: model output probabilities
+        """
+
         raw_out = self.model(xb)
         # BCEwithlogits does the sigmoid
         loss = self.loss_func(raw_out, yb)
         batch_loss = loss.item()
 
-        # BCEwithlogits occassionally returns a huge loss
-        # we replace these losses
+        # BCEwithlogits occassionally returns a huge loss - we replace these losses
+        # TODO: debug why this happens and how to avoid
         if batch_loss > 100:
             loss_alt = self.backup_loss_func(torch.sigmoid(raw_out), yb)
             batch_loss_alt = loss_alt.item()
@@ -290,283 +321,75 @@ class ModelTraining:
         probs = torch.sigmoid(raw_out)
         preds = torch.round(probs)
 
-        # print("for input shape (b,w,f):", xb.shape)
-        # print("labels were:", yb)
-        # print("Model output", raw_out)
-        # print("Probs were:", probs)
-        # print("Loss of: ", batch_loss)
+        if debug:
+            print("for input shape (b,w,f):", xb.shape)
+            print("labels were:", yb)
+            print("Model output", raw_out)
+            print("Probs were:", probs)
+            print("Loss of: ", batch_loss)
+            input("Hit enter to continue")
         return batch_loss, preds, probs
 
     def fit_sklearn_classifier(self):
-        print(f"Fitting Sklearn Classifier - {self.params['model']}")
-        X_train, X_val, X_test, Y_test, Y_train, Y_val = self.dataset.get_sk_dataset()
-        sample_weights = compute_sample_weight(class_weight="balanced", y=Y_train)
+        """Fits the sklearn classifier to the training data and evaluates it.
+
+        Sample weights are computed on the validation and testing sets.
+
+        Returns:
+            float: performance metric on the validation set.
+        """
+        print(f"Fitting Sklearn Classifier -  *** {self.params['model']} *** ")
+
+        # SKlearn trains on the whole dataset at once so it is all loaded
+        # TODO: for large datasets, implement training pipeline with batches
+
+        self.dataset.status = "training"
+        X, Y = self.dataset.get_sk_dataset()
+
+        # Training weights are adjusted to account for class imbalance
+        sample_weights = compute_sample_weight(class_weight="balanced", y=Y)
+
         print("Fitting model")
-        self.model.fit(X_train, Y_train, sample_weight=sample_weights)
-        self.metrics = {}
+        self.model.fit(X, Y, sample_weight=sample_weights)
+
         print("Testing fit")
-        self.metrics["train"], _, _ = self.test_fit(X_train, Y_train)
-        self.metrics["val"], _, val_result_summary = self.test_fit(X_val, Y_val)
-        self.metrics["test"], test_results_df, test_result_summary = self.test_fit(
-            X_test, Y_test
-        )
+        self.metrics["train"], _ = self.test_fit(X, Y)
+
+        self.dataset.status = "validation"
+        X, Y = self.dataset.get_sk_dataset()
+        self.metrics["val"], val_result_summary = self.test_fit(X, Y)
+
+        self.dataset.status = "validation"
+        X, Y = self.dataset.get_sk_dataset()
+        self.metrics["test"], test_result_summary = self.test_fit(X,Y)
+
         print(f"\nTest results:")
+        test_results_df = pd.DataFrame([self.metrics["test"]], columns=self.metrics_names)
         print(test_results_df)
 
         return val_result_summary
 
     def test_fit(self, X_set, Y_set):
+        """Evaluate performance of sklearn model on dataset
+
+        Produces predictions and probabilities on the model input for performance calculation
+
+        Args:
+            X_set (ndarray): 2D model input where each row is an example
+            Y_set (ndarray): labels for each input
+
+        Returns:
+            performance stats: performance stats as a list, a dataframe, and a single value
+        """
         Y_pred = self.model.predict(X_set)
         Y_prob = self.model.predict_proba(X_set)
-        metrics_dict, m_summary = self.calculate_metrics(
+        metrics_dict, m_summary = self.mm.calculate_metrics(
             Y_set, Y_pred, probs=Y_prob, output_dict=True
         )
-        m_list, m_df = self.listify_metrics(metrics_dict)
-        return m_list, m_df, m_summary
+        m_list, self.metrics_names = self.mm.listify_metrics(metrics_dict)
+        return m_list, m_summary
 
-    def calculate_metrics(
-        self,
-        labels,
-        preds,
-        probs=None,
-        output_dict=True,
-        summary_stat="macro avg",
-        verbose=False,
-    ):
-        # Transform the metrics
-        y_pred_list = [a.squeeze().tolist() for a in preds]
-        y_labels = [a.squeeze().tolist() for a in labels]
-        if type(y_labels[0]) is list:
-            y_labels = [[int(a) for a in b] for b in y_labels]
-        else:
-            y_labels = [int(a) for a in y_labels]
 
-        if probs is None:
-            print("substituting probs")
-            probs = y_pred_list
-        else:
-            probs = [a.squeeze().tolist() for a in probs]
-            # probs = probs[0]
-
-        # Calculate all the metrics
-        # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
-        final_summary = []
-        final_report = {}
-        probs = np.array(probs)
-        y_labels = np.array(y_labels)
-        y_pred_list = np.array(y_pred_list)
-
-        if self.params["model"] in ["xgb", "tree", "forest"]:
-            # print(f"labels shape {y_labels.shape}")
-            # print(f"preds shape {y_pred_list.shape}")
-            # input(f"probs shape {probs.shape}")
-            # probs = probs[:, :, 0]
-            # probs = np.reshape(probs, y_labels.shape)
-            # input(f"new probs shape {probs.shape}")
-            probs = y_pred_list
-
-        if len(y_labels.shape) == 1:
-            probs = np.expand_dims(probs, 1)
-            y_labels = np.expand_dims(y_labels, 1)
-            y_pred_list = np.expand_dims(y_pred_list, 1)
-
-        for i in range(len(self.params["class_names"])):
-            try:
-                sub_probs = probs[:, i].tolist()
-                sub_y_labels = y_labels[:, i].tolist()
-                sub_y_pred_list = y_pred_list[:, i].tolist()
-            except IndexError as e:
-                print(probs[:5])
-                print(y_labels[:5])
-                print(y_pred_list[:5])
-                raise e
-
-            tn, fp, fn, tp = confusion_matrix(sub_y_labels, sub_y_pred_list).ravel()
-
-            try:
-                auROC = roc_auc_score(sub_y_labels, sub_probs, average=None)
-                AvgPrec = average_precision_score(sub_y_labels, sub_probs, average=None)
-            except ValueError as V:
-                print(self.params["class_names"])
-                print("Probs:", probs[:6])
-                print("Labels", y_labels[:6])
-                print("Preds", y_pred_list[:6])
-                print(
-                    f"Label shape {len(sub_y_labels)}, probs shape {len(sub_probs)}, values used"
-                )
-                print(sub_y_labels[:10])
-                print(sub_probs[:10])
-
-                auROC = 0.510101
-                AvgPrec = 0.10101
-                raise V
-
-            report = classification_report(
-                sub_y_labels,
-                sub_y_pred_list,
-                output_dict=output_dict,
-                # labels=[i for i in range(len(self.params["class_names"]))],
-                labels=[1],
-                target_names=[self.params["class_names"][i]],
-            )
-            if verbose:
-                print("\n\n", self.params["class_names"][i])
-                print(f"\nlabels: {sub_y_labels[:20]}")
-                print(f"predictions: {sub_y_pred_list[:20]}\n")
-                print(f"TP {tp}  TN {tn}   FP {fp}   FN {fn}")
-                printable = [round(p, 2) for p in sub_probs[:20]]
-                print(f"probs: {printable}")
-                print(f"auROC: {auROC}, AP: {AvgPrec}")
-
-            try:
-                report[self.params["class_names"][i]]["auROC"] = auROC
-                report[self.params["class_names"][i]]["AP"] = AvgPrec
-
-                report[self.params["class_names"][i]]["conf-TP"] = tp
-                report[self.params["class_names"][i]]["conf-TN"] = tn
-                report[self.params["class_names"][i]]["conf-FP"] = fp
-                report[self.params["class_names"][i]]["conf-FN"] = fn
-
-            except Exception as e:
-                print(report)
-                raise e
-            for k, v in report.items():
-                if "avg" not in k:
-                    print(k, v)
-                    final_report[k] = v
-            final_summary.append(report[summary_stat]["f1-score"])
-
-        print(f"F1 by class {final_summary}")
-        final_stat = sum(final_summary) / len(final_summary)
-        print(f"Avg F1: {final_stat}")
-        if verbose:
-            self.graph_model_output(
-                y_labels, y_pred_list, probabilities=probs, title="title"
-            )
-        return final_report, final_stat
-
-    def listify_metrics(self, metrics_dict, loss=0):
-        columns = ["loss"]
-        values = [loss]
-        for k, v in metrics_dict.items():
-            for k2, v2 in v.items():
-                columns.append(f"{k}-{k2}")
-                values.append(v2)
-        self.columns = columns
-        df = pd.DataFrame([values], columns=columns)
-        return values, df
-
-    def plot_metrics(self, verbose=False):
-        for k in ["train", "val", "test"]:
-            if k is "test" or self.params["model"] in [
-                "forest",
-                "tree",
-                "mlp",
-                "knn",
-                "xgb",
-            ]:
-                df = pd.DataFrame([self.metrics[k]], columns=self.columns)
-            else:
-                df = pd.DataFrame(self.metrics[k], columns=self.columns)
-            # print(k)
-            # print(df)
-            metrics_to_log = [
-                "auROC",
-                "AP",
-                "support",
-                "precision",
-                "recall",
-                "f1-score",
-                "loss",
-            ]
-            for c in self.columns:
-                for m in metrics_to_log:
-                    if m in c:
-                        if verbose:
-                            print(f"{k}_{c}", df[c].iloc[-1])
-                        elif "f1-score" in c:
-                            print(f"{k}_{c}", df[c].iloc[-1])
-
-        if self.params["model"] in ["forest", "tree", "mlp", "knn", "xgb"]:
-            df_train = pd.DataFrame([self.metrics["train"]], columns=self.columns)
-            df_val = pd.DataFrame([self.metrics["val"]], columns=self.columns)
-        else:
-            df_train = pd.DataFrame(self.metrics["train"], columns=self.columns)
-            df_val = pd.DataFrame(self.metrics["val"], columns=self.columns)
-
-        print(df_val.shape)
-        if df_val.shape[0] == 1:
-            print("No graphs to plot for trainers without epochs")
-            # Don't plot single point graphs
-            return
-        else:
-            columns_to_plot = [
-                c for c in df_train.columns if ("f1-score" in c or "AP" in c)
-            ]
-            # Create a figure showing metrics progress while training
-            fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
-            df_train[columns_to_plot].plot(ax=axes[0])
-            df_train["loss"].plot(ax=axes[0], secondary_y=True, color="black")
-            axes[0].set_title("train")
-
-            df_val[columns_to_plot].plot(ax=axes[1])
-            df_val["loss"].plot(ax=axes[1], secondary_y=True, color="black")
-            axes[1].set_title("val")
-
-            plt.show()
-            # experiment.log_image("diagrams", fig)
-        return
-
-    def graph_model_output(
-        self,
-        actual_labels,
-        predicted_labels,
-        probabilities=None,
-        max_graph_size=1000,
-        title="Graph Title",
-    ):
-        print("Graphing model output")
-        # TODO: Add saving of outputs
-        assert (
-            actual_labels is not None and predicted_labels is not None
-        ), "Invalid inputs to graph model, must not be none!"
-
-        input_length = len(actual_labels)
-        if input_length > max_graph_size:
-            for i in range(math.ceil(input_length / max_graph_size)):
-                plt.figure(figsize=(30, 5))
-                plt.plot(
-                    actual_labels[max_graph_size * i : max_graph_size * (i + 1)],
-                    color="green",
-                    label="original",
-                )
-                plt.plot(
-                    predicted_labels[max_graph_size * i : max_graph_size * (i + 1)]
-                    * 0.9,
-                    color="red",
-                    label="predicted",
-                )  # times 0.9 to differentiate lines
-                if probabilities is not None:
-                    plt.plot(
-                        probabilities[max_graph_size * i : max_graph_size * (i + 1)],
-                        color="yellow",
-                        label="probability",
-                    )
-
-                plt.legend()
-                plt.set_title(title)
-                plt.show()
-        else:
-            plt.figure(figsize=(30, 5))
-            plt.plot(actual_labels, color="green", label="original")
-            plt.plot(
-                predicted_labels * 0.9, color="red", label="predicted"
-            )  # times 0.9 to differentiate lines
-            if probabilities is not None:
-                plt.plot(probabilities, color="yellow", label="probability")
-
-            plt.legend()
-            plt.show()
 
 
 if __name__ == "__main__":
@@ -618,4 +441,4 @@ if __name__ == "__main__":
     trainer = ModelTraining(model_params, data, verbose=True)
 
     auc_roc = trainer.train_and_eval_model()
-    trainer.plot_metrics()
+    trainer.mm.plot_metrics()
