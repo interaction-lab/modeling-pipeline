@@ -164,67 +164,6 @@ class ModelMetrics:
         self.metrics_names = columns
         return values, columns
 
-    def plot_metrics(self, verbose=False):
-        for k in ["train", "val", "test"]:
-            if k is "test" or self.params["model"] in [
-                "forest",
-                "tree",
-                "mlp",
-                "knn",
-                "xgb",
-            ]:
-                df = pd.DataFrame([self.metrics[k]], columns=self.metrics_names)
-            else:
-                df = pd.DataFrame(self.metrics[k], columns=self.metrics_names)
-            # print(k)
-            # print(df)
-            metrics_to_log = [
-                "auROC",
-                "AP",
-                "support",
-                "precision",
-                "recall",
-                "f1-score",
-                "loss",
-            ]
-            for c in self.metrics_names:
-                for m in metrics_to_log:
-                    if m in c:
-                        if verbose:
-                            print(f"{k}_{c}", df[c].iloc[-1])
-                        elif "f1-score" in c:
-                            print(f"{k}_{c}", df[c].iloc[-1])
-
-        if self.params["model"] in ["forest", "tree", "mlp", "knn", "xgb"]:
-            df_train = pd.DataFrame([self.metrics["train"]], columns=self.metrics_names)
-            df_val = pd.DataFrame([self.metrics["val"]], columns=self.metrics_names)
-        else:
-            df_train = pd.DataFrame(self.metrics["train"], columns=self.metrics_names)
-            df_val = pd.DataFrame(self.metrics["val"], columns=self.metrics_names)
-
-        print(df_val.shape)
-        if df_val.shape[0] == 1:
-            print("No graphs to plot for trainers without epochs")
-            # Don't plot single point graphs
-            return
-        else:
-            columns_to_plot = [
-                c for c in df_train.columns if ("f1-score" in c or "AP" in c)
-            ]
-            # Create a figure showing metrics progress while training
-            fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
-            df_train[columns_to_plot].plot(ax=axes[0])
-            df_train["loss"].plot(ax=axes[0], secondary_y=True, color="black")
-            axes[0].set_title("train")
-
-            df_val[columns_to_plot].plot(ax=axes[1])
-            df_val["loss"].plot(ax=axes[1], secondary_y=True, color="black")
-            axes[1].set_title("val")
-
-            plt.show()
-            # experiment.log_image("diagrams", fig)
-        return
-
 
     def graph_model_output(
         self,
