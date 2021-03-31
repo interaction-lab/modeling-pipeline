@@ -185,7 +185,7 @@ def transform_dataset(trial, df, model_params):
         rolling_window_size,
         KEEP_UNWINDOWED_FEATURES,
         rolling_window_config,
-        ALL_CLASSES,
+        # ALL_CLASSES,
     )
     df = tdf.sub_sample(df, step_size)
     if NORMALIZE:
@@ -223,7 +223,7 @@ def objective(trial):
     summary_metric = trainer.train_and_eval_model()
 
     print("Logging reports")
-    log_reports(trainer.metrics, trainer.columns, LOG_TO_NEPTUNE)
+    log_reports(trainer.metrics, trainer.metrics_names, LOG_TO_NEPTUNE)
 
     return summary_metric
 
@@ -235,7 +235,7 @@ def objective(trial):
 # ********************************************************************************
 FDF_PATH = "./data/feathered_data/tmp-w.feather"
 EXP_NAME = "walkthrough"
-COMPUTER = "cmb-laptop"
+COMPUTER = "lambda"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
@@ -243,9 +243,9 @@ models_to_try = [
     "tcn",
     "xgb",
     "forest",
-    # "rnn",
-    # "lstm",
-    # "gru",
+    "rnn",
+    "lstm",
+    "gru",
 ]  # Not working: "mlp", "knn"
 
 NUM_TRIALS = 2  # Number of trials to search for each model
@@ -277,7 +277,7 @@ OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_HISTORY = 3  # Max window the model can look through
 
-LOG_TO_NEPTUNE = False
+LOG_TO_NEPTUNE = True
 
 
 # ***********************************************************************************

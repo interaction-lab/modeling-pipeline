@@ -137,7 +137,7 @@ class ModelMetrics:
             )
         return final_report, final_stat
 
-    def listify_metrics(self, metrics_dict, loss=None):
+    def listify_metrics(self, metrics_dict, loss=0):
         """Convert metrics from a dictionary to a list
 
         The dictionary of all metrics is converted to a list and the columns 
@@ -150,12 +150,13 @@ class ModelMetrics:
         Returns:
             list, DataFrame: a list of the performance metrics values and a dataframe
         """
-        if loss:
-            columns = ["loss"]
-            values = [loss]
-        else:
-            columns, values = [], []
-
+        # if loss:
+        #     columns = ["loss"]
+        #     values = [loss]
+        # else:
+        #     columns, values = [], []
+        columns = ["loss"]
+        values = [loss]
         for k, v in metrics_dict.items():
             for k2, v2 in v.items():
                 columns.append(f"{k}-{k2}")
