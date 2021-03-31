@@ -275,3 +275,4 @@ dmypy.json
 
 *.html
 docs/_build
+*.wav
