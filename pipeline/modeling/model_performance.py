@@ -49,12 +49,6 @@ class ModelMetrics:
         y_pred_list = np.array(y_pred_list)
 
         if self.params["model"] in ["xgb", "tree", "forest"]:
-            # print(f"labels shape {y_labels.shape}")
-            # print(f"preds shape {y_pred_list.shape}")
-            # input(f"probs shape {probs.shape}")
-            # probs = probs[:, :, 0]
-            # probs = np.reshape(probs, y_labels.shape)
-            # input(f"new probs shape {probs.shape}")
             probs = y_pred_list
 
         if len(y_labels.shape) == 1:
@@ -265,7 +259,7 @@ class ModelMetrics:
                 c for c in df_train.columns if ("f1-score" in c or "AP" in c)
             ]
             # Create a figure showing metrics progress while training
-            fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
+            _, axes = plt.subplots(nrows=2, ncols=1, figsize=(15, 15))
             df_train[columns_to_plot].plot(ax=axes[0])
             df_train["loss"].plot(ax=axes[0], secondary_y=True, color="black")
             axes[0].set_title("train")
@@ -277,3 +271,62 @@ class ModelMetrics:
             plt.show()
             # experiment.log_image("diagrams", fig)
         return
+
+# def get_all_metrics(turn_labels, probs, preds, verbose, plot):
+#     auROC=roc_auc_score(turn_labels, probs)
+#     AP=average_precision_score(turn_labels, probs)
+#     fpr, tpr, thresholds = roc_curve(turn_labels, probs)
+
+#     report = classification_report( turn_labels, preds, labels=[0,1], output_dict=True)
+#     tn, fp, fn, tp = confusion_matrix(turn_labels, preds).ravel()
+#     optimal_idx = np.argmax(tpr - fpr)
+#     optimal_threshold = thresholds[optimal_idx]
+
+#     # Adjusting for optimal threshold
+#     adjust = .5-optimal_threshold
+#     # adjust = optimal_threshold-.5
+#     probs2 = probs + (adjust)
+#     preds2 = probs2.round()#.fillna(0).reset_index(drop=True)
+#     if plot:
+#         fig, ax = plt.subplots(figsize=(20,3))
+#         ax.plot(probs[:2000], 'r')
+#         ax.plot(probs2[:2000], 'g')
+#         plt.show()
+#         fig, ax = plt.subplots(figsize=(20,3))
+#         ax.plot(preds[:2000], 'r')
+#         ax.plot(preds2[:2000], 'g')
+#         plt.show()
+
+#     auROC2=roc_auc_score(turn_labels, probs2)
+#     AP2=average_precision_score(turn_labels, probs2)
+#     fpr2, tpr2, thresholds2 = roc_curve(turn_labels, probs2)
+
+#     report2 = classification_report( turn_labels, preds2, labels=[0,1], output_dict=True)
+#     tn2, fp2, fn2, tp2 = confusion_matrix(turn_labels, preds2).ravel()
+#     optimal_idx2 = np.argmax(tpr2 - fpr2)
+#     optimal_threshold2 = thresholds2[optimal_idx2]
+
+#     if verbose:
+#         # print(f"\nFor session {session} person {person}:")
+#         print("\nBEFORE")
+#         print(f"auROC={auROC}")
+#         print(f"AP={AP}")
+#         print(f'Acc={report["accuracy"]}')
+#         print(f'F1={report["weighted avg"]["f1-score"]}')
+#         print(f"\n Optimal threshold value is: {optimal_threshold}\n")
+#         for k,v in report.items():
+#             print(k,v)
+#         print(f"tp={tp}, tn={tn}, fp={fp}, fn={fn}")
+
+#         print("\nAFTER")
+#         print(f"adjusting by {adjust}")
+#         print(f"auROC={auROC2}")
+#         print(f"AP={AP2}")
+#         print(f'Acc={report2["accuracy"]}')
+#         print(f'F1={report2["weighted avg"]["f1-score"]}')
+#         print(f"\n Optimal threshold value is: {optimal_threshold2}\n")
+#         for k,v in report2.items():
+#             print(k,v)
+#         print(f"tp={tp2}, tn={tn2}, fp={fp2}, fn={fn2}")
+
+#     return auROC, AP, report, optimal_threshold, report2
