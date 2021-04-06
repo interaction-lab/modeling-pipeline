@@ -53,13 +53,26 @@ def get_dirs_from_config(config: str = "./config/dir_sample_config.yml"):
     with open(config) as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    dir_list = [os.path.join(*config["dir_pattern"])]
+    dir_list = get_dir_list_from_dict(config)
+    return dir_list
+
+
+def get_dir_list_from_dict(config_dict):
+    """Creates a file list from a dictionary containing the directory pattern and substitutes
+
+    Args:
+        config_dict (dict): dictionary with dir_pattern and substitutes keys
+
+    Returns:
+        list: list of files according to the dictionary and substitutes
+    """
+    dir_list = [os.path.join(*config_dict["dir_pattern"])]
 
     # TODO: Update to handle single file case
-    for sub_dir, subs in config["substitutes"].items():
+    for sub_dir, subs in config_dict["substitutes"].items():
         assert (
-            sub_dir in config["dir_pattern"]
-        ), f"substitution ({sub_dir}) must have a target match in the path {config['dir_pattern']}"
+            sub_dir in config_dict["dir_pattern"]
+        ), f"substitution ({sub_dir}) must have a target match in the path {config_dict['dir_pattern']}"
         new_dir_list = []
         for p in dir_list:
             for new_dir in subs:

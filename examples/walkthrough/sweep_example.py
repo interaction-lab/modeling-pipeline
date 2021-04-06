@@ -1,6 +1,5 @@
 import neptune
 import optuna
-import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -8,7 +7,10 @@ import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
 
-from pipeline.modeling.data_utils import TimeSeriesDataset, LoadDF, TransformDF, timeit
+from pipeline.modeling.data_utils import TransformDF
+from pipeline.modeling.datasets import TimeSeriesDataset
+from pipeline.modeling.data_to_df import LoadDF
+from pipeline.common.function_utils import timeit
 from pipeline.modeling.model_training import ModelTraining
 from pipeline.common.optimize_pandas import optimize
 
@@ -277,7 +279,7 @@ OVERLAP = False  # Should examples be allowed to overlap with each other
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_HISTORY = 3  # Max window the model can look through
 
-LOG_TO_NEPTUNE = True
+LOG_TO_NEPTUNE = False
 
 
 # ***********************************************************************************

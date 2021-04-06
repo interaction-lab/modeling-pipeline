@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 
 if not sys.warnoptions:
     import warnings
+
     warnings.simplefilter("ignore")
 
 import torch
@@ -21,6 +22,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.multioutput import MultiOutputClassifier
+
 # from sklearn.linear_model import SGDClassifier
 # from sklearn.ensemble import GradientBoostingClassifier
 import xgboost as xgb
@@ -28,7 +30,9 @@ from .model_defs import TCNModel, RNNModel, LSTMModel, GRUModel
 
 
 from .model_monitoring import EarlyStopping
-from .data_utils import TimeSeriesDataset, LoadDF, timeit
+from .datasets import TimeSeriesDataset
+from .data_to_df import LoadDF
+from pipeline.common.function_utils import timeit
 from .model_performance import ModelMetrics
 
 
@@ -41,8 +45,8 @@ dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 class ModelTraining:
-    """The ModelTraing class is intended as model and dataset agnostic trainer (currently supporting time series datasets)
-    """
+    """The ModelTraing class is intended as model and dataset agnostic trainer (currently supporting time series datasets)"""
+
     def __init__(self, params, dataset, trial=None, verbose=True):
         self.trial = trial
         self.dataset = dataset
@@ -50,7 +54,6 @@ class ModelTraining:
         self.metrics = {"train": [], "val": [], "test": []}
         self.model = self._load_model_with_params(params)
         self.mm = ModelMetrics(params)
-
 
     def _load_model_with_params(self, params):
         """Create model object with specified parameters
@@ -60,7 +63,7 @@ class ModelTraining:
         """
         self.params = params
         print(f"starting round with these params:")
-        for k,v in params.items():
+        for k, v in params.items():
             print(f"\t{k}: {v}")
 
         if params["model"] == "tcn":
@@ -158,7 +161,7 @@ class ModelTraining:
     def train_and_eval_model(self):
         """Setup and train model on the provided datset
 
-        Will call training functions (fit_) for sklearn classifiers or torch 
+        Will call training functions (fit_) for sklearn classifiers or torch
         neural networks.
 
         Returns:
@@ -282,7 +285,9 @@ class ModelTraining:
 
         m_list, self.metrics_names = self.mm.listify_metrics(report, avg_loss)
 
-        print(f"{self.epoch}-{self.dataset.status}: L: {avg_loss:.3f} | Avg-F1 {summary_stat:.3f}")
+        print(
+            f"{self.epoch}-{self.dataset.status}: L: {avg_loss:.3f} | Avg-F1 {summary_stat:.3f}"
+        )
 
         return m_list, summary_stat
 
@@ -362,10 +367,12 @@ class ModelTraining:
 
         self.dataset.status = "validation"
         X, Y = self.dataset.get_sk_dataset()
-        self.metrics["test"], test_result_summary = self.test_fit(X,Y)
+        self.metrics["test"], test_result_summary = self.test_fit(X, Y)
 
         print(f"\nTest results:")
-        test_results_df = pd.DataFrame([self.metrics["test"]], columns=self.metrics_names)
+        test_results_df = pd.DataFrame(
+            [self.metrics["test"]], columns=self.metrics_names
+        )
         print(test_results_df)
 
         return val_result_summary
@@ -450,6 +457,7 @@ class ModelTraining:
             plt.show()
             # experiment.log_image("diagrams", fig)
         return
+
 
 if __name__ == "__main__":
     print("Starting")

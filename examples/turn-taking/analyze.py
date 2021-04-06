@@ -9,7 +9,10 @@ import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
 
-from pipeline.modeling.data_utils import TimeSeriesDataset, LoadDF, TransformDF, timeit
+from pipeline.modeling.data_utils import TransformDF
+from pipeline.modeling.datasets import TimeSeriesDataset
+from pipeline.modeling.data_to_df import LoadDF
+from pipeline.common.function_utils import timeit
 from pipeline.modeling.model_training import ModelTraining
 from pipeline.common.optimize_pandas import optimize
 
