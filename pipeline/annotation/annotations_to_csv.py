@@ -116,4 +116,4 @@ if __name__ == "__main__":
     parser.add_argument("features", help="path to matching (cleaned) features csv")
     args = parser.parse_args()
 
-    convert_annotations(args.annotation, args.output, feature_csv=args.features)
+    convert_annotations(args.annotation, args.output, feature_csv_path=args.features)
