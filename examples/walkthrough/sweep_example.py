@@ -7,45 +7,16 @@ import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
 
-from pipeline.modeling.data_utils import TransformDF
-from pipeline.modeling.datasets import TimeSeriesDataset
-from pipeline.modeling.data_to_df import LoadDF
 from pipeline.common.function_utils import timeit
 from pipeline.modeling.model_training import ModelTraining
-from pipeline.common.optimize_pandas import optimize
+from .custom_dataset import MakeTurnsDataset as MTD
 
-
-@timeit
-def add_turn_labels(df, window, visualize=False):
-    print("******Adding in turn taking labels*****")
-    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window)
-
-    df["yielding"] = 0.0
-    df["temp"] = df[["speaking"]].rolling(window=indexer, min_periods=1).sum()
-    df["temp"][df["temp"] < window] = 1.0
-    df["yielding"][(df["speaking"] == 1.0) & (df["temp"] == 1.0)] = 1.0
-
-    df["taking"] = 0.0
-    df["temp2"] = df[["speaking"]].rolling(window=indexer, min_periods=1).sum()
-    df["taking"][(df["speaking"] == 0) & (df["temp2"] > 0)] = 1.0
-
-    df["holding"] = 0.0
-    df["holding"][(df["speaking"] == 1) & (df["yielding"] == 0)] = 1.0
-
-    df["listening"] = 0.0
-    df["listening"][(df["speaking"] == 0) & (df["taking"] == 0)] = 1.0
-
-    if visualize:
-        df[["temp2", "speaking"]].plot.line()
-        df[["speaking", "taking", "yielding"]].plot.line()
-        plt.show()
-    return
 
 
 def log_reports(metrics, columns, log_to_neptune, verbose=False):
     # Here is where we can get creative showing what we want
     for k in ["train", "val", "test"]:
-        if k is "test" or model in ["forest", "tree", "mlp", "knn", "xgb"]:
+        if k == "test" or model in ["forest", "tree", "mlp", "knn", "xgb"]:
             df = pd.DataFrame([metrics[k]], columns=columns)
         else:
             df = pd.DataFrame(metrics[k], columns=columns)
@@ -172,52 +143,16 @@ def set_model_params(trial, model):
     return model_params
 
 
-def transform_dataset(trial, df, model_params):
-    print("\n\n*****Transforming Dataset*******")
-    tdf = TransformDF()
-    rolling_window_size = trial.suggest_int("r_win_size", 1, 4)
-    step_size = trial.suggest_int("step_size", 1, 2)
-
-    rolling_window_config = (
-        "./examples/walkthrough/walkthrough_configs/windowing_example.yml"
-    )
-
-    df = tdf.apply_rolling_window(
-        df,
-        rolling_window_size,
-        KEEP_UNWINDOWED_FEATURES,
-        rolling_window_config,
-        # ALL_CLASSES,
-    )
-    df = tdf.sub_sample(df, step_size)
-    if NORMALIZE:
-        df = tdf.normalize_dataset(df, ALL_CLASSES)
-
-    subsample_perc = trial.suggest_int("sub_sample_neg_perc", 50, 95)
-
-    dataset = TimeSeriesDataset(
-        df,
-        labels=ALL_CLASSES,
-        shuffle=SHUFFLE,
-        subsample_perc=subsample_perc,
-        # data_hash=FILE_HASH,
-    )
-    dataset.setup_dataset(window=model_params["window"])
-    model_params["rolling_window_size"] = rolling_window_size
-    model_params["step_size"] = step_size
-    model_params["subsample_perc"] = subsample_perc
-    model_params["num_features"] = dataset.df.shape[1]
-    model_params["class_weights"] = dataset.weights
-    return dataset, model_params
-
-
 @timeit
 def objective(trial):
     model_params = set_model_params(trial, model)
 
     df = pd.read_feather(FDF_PATH)
 
-    dataset, model_params = transform_dataset(trial, df, model_params)
+    dataset, model_params = builder.transform_dataset(trial, df, model_params, SHUFFLE, window_config)
+    
+    if LOG_TO_NEPTUNE:
+        neptune.send_metric("dataset_shape", dataset.df.shape[0])
 
     print("\n\n******Training and evaluating model******")
     trainer = ModelTraining(model_params, dataset, trial, verbose=True)
@@ -278,6 +213,7 @@ OVERLAP = False  # Should examples be allowed to overlap with each other
 
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_HISTORY = 3  # Max window the model can look through
+MAX_FEATURE_ROLL = 30
 
 LOG_TO_NEPTUNE = False
 
@@ -290,17 +226,10 @@ LOG_TO_NEPTUNE = False
 # Hyperparameters are set (and recorded) in optimize().
 # ***********************************************************************************
 config = f"examples/walkthrough/{EXP_NAME}_configs/data_loader_{FEATURES}_config.yml"
-data_loader = LoadDF(config)
-LOADED_DF, FILE_HASH = data_loader.load_all_dataframes()
+window_config = f"examples/walkthrough/{EXP_NAME}_configs/windowing_example.yml"
 
-if "turns" in LABELS_CLASSES.keys():
-    add_turn_labels(LOADED_DF, 30)
-    LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
+builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH)
 
-if "speech" not in LABELS_CLASSES.keys():
-    LOADED_DF.drop(["speaking"], inplace=True, axis=1)
-
-LOADED_DF.to_feather(FDF_PATH)
 
 # Record experimental details for Neptune
 params = {
