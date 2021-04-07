@@ -8,7 +8,7 @@ Subpackages
    :maxdepth: 4
 
    pipeline.annotation
-   pipeline.feature-extraction
+   pipeline.feature_extraction
    pipeline.modeling
 
 Module contents

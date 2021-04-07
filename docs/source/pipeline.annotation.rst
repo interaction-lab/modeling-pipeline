@@ -20,6 +20,22 @@ pipeline.annotation.annotations\_to\_csv module
    :undoc-members:
    :show-inheritance:
 
+pipeline.annotation.combine\_labels\_and\_features module
+---------------------------------------------------------
+
+.. automodule:: pipeline.annotation.combine_labels_and_features
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+pipeline.annotation.intervals\_to\_timeseries module
+----------------------------------------------------
+
+.. automodule:: pipeline.annotation.intervals_to_timeseries
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Module contents
 ---------------
 
