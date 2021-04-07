@@ -4,7 +4,7 @@ Interaction Lab Data Processing and Modeling Pipeline
 
 This modeling pipeline is meant to take you from data collection all the way through to using your model in the wild using data science best practices without an overwhelming amount of development required. With this pipeline you don't need to be a machine learning expert to create useful models of human behavior in the HCI and HRI domain.
 
-Please see examples/walkthrough/ for a complete (step-by-step and end-to-end) walkthrough of this modeling process. 
+Read the docs are now available in docs. Please see examples/walkthrough/ for a complete (step-by-step and end-to-end) walkthrough of this modeling process. 
 
 Philosophy
 -----------------
@@ -35,7 +35,7 @@ Contributing
 We welcome contributions. To contribute please make an issue requesting a change or a pull request with the expected change. To get started see the list below or any of the ToDo tags above.
 
 - See [ToDo] Tags
-- Improve Citations
+- Improve Documentation and Citations
 - Add Testing
 - Features to Add:
        - OpenPose
