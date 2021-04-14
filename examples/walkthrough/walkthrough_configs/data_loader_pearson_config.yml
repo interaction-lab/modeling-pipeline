@@ -1,54 +1,119 @@
 feature_sets:
   - Audio-Librosa
-  # - Audio-Opensmile
+  - Audio-Opensmile
   - Annotation-Speaker
+  - Video-Facemesh
 
 feature_files:
   Audio-Librosa:
     dir_pattern:
       - /
       - home
-      - chris
-      - coding
-      - usc
+      - interactionlab
+      - chrisb
       - modeling-pipeline
       - data
+      - walkthrough
       - features
       - num
       - librosa_audio.csv
     substitutes:
       num:
         - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
   Audio-Opensmile:
     dir_pattern:
       - /
       - home
-      - chris
-      - coding
-      - usc
+      - interactionlab
+      - chrisb
       - modeling-pipeline
       - data
+      - walkthrough
       - features
       - num
       - opensmile_audio.csv
     substitutes:
       num:
         - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
   Annotation-Speaker:
     dir_pattern:
       - /
       - home
-      - chris
-      - coding
-      - usc
+      - interactionlab
+      - chrisb
       - modeling-pipeline
       - data
+      - walkthrough
       - va_output
       - num
       - speaking.csv
     substitutes:
       num:
         - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+  Video-Facemesh:
+    dir_pattern:
+      - /
+      - home
+      - interactionlab
+      - chrisb
+      - modeling-pipeline
+      - data
+      - walkthrough
+      - features
+      - num
+      - mediapipe_facemesh.csv
+    substitutes:
+      num:
+        - 1
+        - 2
+        - 3
+        - 4
+        - 5
+        - 6
+        - 7
+        - 8
+        - 9
+        - 10
+        - 11
+        - 12
+        - 13
+
 
 features:
   Annotation-Speaker:
@@ -113,7 +178,21 @@ features:
     - Spect_Contrast_5
     - Spect_Contrast_6
     - Rolloff_0
+  Video-Facemesh:
+    - x_0
+    - y_0
+    - y_4
+    - y_6
+    - y_66
   Audio-Opensmile:
+    - Loudness_sma3
+    - alphaRatio_sma3
+    - hammarbergIndex_sma3
+    - slope0-500_sma3
+    - slope500-1500_sma3
+    - mfcc1_sma3
+    - mfcc2_sma3
+    - mfcc3_sma3
     - F0semitoneFrom27.5Hz_sma3nz
     - jitterLocal_sma3nz
     - shimmerLocaldB_sma3nz
@@ -122,3 +201,5 @@ features:
     - logRelF0-H1-A3_sma3nz
     - F1frequency_sma3nz
     - F1bandwidth_sma3nz
+    - F2bandwidth_sma3nz
+    - F3bandwidth_sma3nz

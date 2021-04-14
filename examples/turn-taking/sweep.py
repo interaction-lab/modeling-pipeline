@@ -8,45 +8,19 @@ import neptunecontrib.monitoring.optuna as opt_utils
 from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
 
-from pipeline.modeling.data_utils import TransformDF
-from pipeline.modeling.datasets import TimeSeriesDataset
+
 from pipeline.modeling.data_to_df import LoadDF
 from pipeline.common.function_utils import timeit
 from pipeline.modeling.model_training import ModelTraining
 from pipeline.common.optimize_pandas import optimize
+from .custom_dataset import MakeTurnsDataset
 
-
-@timeit
-def add_turn_labels(df, window, visualize=False):
-    print("******Adding in turn taking labels*****")
-    indexer = pd.api.indexers.FixedForwardWindowIndexer(window_size=window)
-
-    df["yielding"] = 0.0
-    df["temp"] = df[["speaking"]].rolling(window=indexer, min_periods=1).sum()
-    df["temp"][df["temp"] < window] = 1.0
-    df["yielding"][(df["speaking"] == 1.0) & (df["temp"] == 1.0)] = 1.0
-
-    df["taking"] = 0.0
-    df["temp2"] = df[["speaking"]].rolling(window=indexer, min_periods=1).sum()
-    df["taking"][(df["speaking"] == 0) & (df["temp2"] > 0)] = 1.0
-
-    df["holding"] = 0.0
-    df["holding"][(df["speaking"] == 1) & (df["yielding"] == 0)] = 1.0
-
-    df["listening"] = 0.0
-    df["listening"][(df["speaking"] == 0) & (df["taking"] == 0)] = 1.0
-
-    if visualize:
-        df[["temp2", "speaking"]].plot.line()
-        df[["speaking", "taking", "yielding"]].plot.line()
-        plt.show()
-    return
 
 
 def log_reports(metrics, columns, log_to_neptune, verbose=False):
     # Here is where we can get creative showing what we want
     for k in ["train", "val", "test"]:
-        if k is "test" or model in ["forest", "tree", "mlp", "knn", "xgb"]:
+        if k == "test" or model in ["forest", "tree", "mlp", "knn", "xgb"]:
             df = pd.DataFrame([metrics[k]], columns=columns)
         else:
             df = pd.DataFrame(metrics[k], columns=columns)
@@ -174,119 +148,14 @@ def set_model_params(trial, model):
 
 
 @timeit
-def transform_dataset(trial, df, model_params):
-    print("\n\n*****Transforming Dataset*******")
-    tdf = TransformDF()
-    rolling_window_size = trial.suggest_int("r_win_size", 1, MAX_FEATURE_ROLL)
-    step_size = trial.suggest_int("step_size", 1, 6)
-
-    df = tdf.apply_rolling_window(
-        df,
-        rolling_window_size,
-        KEEP_UNWINDOWED_FEATURES,
-        rw_config_path,
-        # ALL_CLASSES,
-    )
-    df = tdf.sub_sample(df, step_size)
-    if NORMALIZE:
-        df = tdf.normalize_dataset(df, ALL_CLASSES)
-
-    subsample_perc = trial.suggest_int("sub_sample_neg_perc", 50, 95)
-
-    dataset = TimeSeriesDataset(
-        df,
-        labels=ALL_CLASSES,
-        shuffle=SHUFFLE,
-        subsample_perc=subsample_perc,
-        # data_hash=FILE_HASH,
-    )
-    dataset.setup_dataset(window=model_params["window"])
-    model_params["rolling_window_size"] = rolling_window_size
-    model_params["step_size"] = step_size
-    model_params["subsample_perc"] = subsample_perc
-    model_params["num_features"] = dataset.df.shape[1]
-    model_params["class_weights"] = dataset.weights
-    if LOG_TO_NEPTUNE:
-        neptune.send_metric("dataset_shape", df.shape[0])
-    return dataset, model_params
-
-
-@timeit
-def restructure_and_save_data(exp_config_base):
-    df_list, df_list_of_lists = [], []
-
-    rw_config_path = f"{exp_config_base}/windowing.yml"
-
-    # DF columns: left, right, center, bot
-    if "left" in ALL_CLASSES:
-        rw_config_path = f"{exp_config_base}/group/windowing.yml"
-        dl_config_path = f"{exp_config_base}/group/data_loader.yml"
-
-        data_loader = LoadDF(dl_config_path)
-        df, _ = data_loader.load_all_dataframes(
-            rename_cols=True, test_on_two_examples=SHORT_TEST
-        )
-
-    # DF columns: speaking
-    else:
-        for p in ["left", "right", "center"]:
-            dl_config_path = f"{exp_config_base}/data_loader_{p}.yml"
-            data_loader = LoadDF(dl_config_path)
-            df_list_subset, _ = data_loader.load_all_dataframes(
-                df_as_list=True, test_on_two_examples=SHORT_TEST
-            )
-
-            # Convert lrc speaking labels to "speaking" column headers
-            for df in df_list_subset:
-                c = list(df.columns)
-                c.remove(p)
-                c.append("speaking")
-                df.columns = c
-
-            df_list_of_lists.append(df_list_subset)
-
-        # Reorder dataframes
-        for j in range(len(df_list_of_lists[0])):
-            for i in range(3):
-                df_list.append(df_list_of_lists[i][j])
-
-        # Join entire list of dataframes
-        df = pd.concat(df_list, axis=0)
-
-    # Compress and optimize dataframe
-    LOADED_DF = optimize(df)
-
-    LOADED_DF = LOADED_DF.fillna(0)
-    LOADED_DF.reset_index(inplace=True)
-
-    # Change labels for turn taking or prediction
-    if exp_type == "turn":
-        add_turn_labels(LOADED_DF, PREDICTION_WINDOW)
-        LOADED_DF.drop(["index", "temp", "temp2"], inplace=True, axis=1)
-
-    if exp_type == "predict":
-        LOADED_DF[ALL_CLASSES] = LOADED_DF[ALL_CLASSES].shift(
-            PREDICTION_WINDOW, fill_value=0
-        )
-
-    # Clean up speaking label if not used
-    if "speaking" not in ALL_CLASSES and "speaking" in LOADED_DF.columns:
-        LOADED_DF.drop(["speaking"], inplace=True, axis=1)
-
-    LOADED_DF.to_feather(FDF_PATH)
-    LOADED_DF = None  # Clear the space
-
-    return data_loader, rw_config_path, dl_config_path
-
-
-@timeit
 def objective(trial):
     model_params = set_model_params(trial, model)
 
     df = pd.read_feather(FDF_PATH)
 
-    dataset, model_params = transform_dataset(trial, df, model_params)
-
+    dataset, model_params = MTD.transform_dataset(trial, df, model_params, SHUFFLE)
+    if LOG_TO_NEPTUNE:
+        neptune.send_metric("dataset_shape", dataset.df.shape[0])
     print(f"\n\n******Training and evaluating {model}******")
     trainer = ModelTraining(model_params, dataset, trial, verbose=True)
     print(f"Traing and eval on data (size={dataset.df.shape}")
@@ -387,11 +256,14 @@ FDF_PATH = "./data/feathered_data/tmp.feather"
 
 LOAD_FROM_CSV = True
 
+MTD = MakeTurnsDataset(ALL_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH)
+
 exp_config_base = f"./examples/{EXP_NAME}/configs/{FEATURES}"
 if LOAD_FROM_CSV:
     print("reloading data!")
-    data_loader, rw_config_path, dl_config_path = restructure_and_save_data(
-        exp_config_base
+    data_loader, rw_config_path, dl_config_path = MTD.restructure_and_save_data(
+        exp_config_base,
+        SHORT_TEST, exp_type, PREDICTION_WINDOW
     )
 else:
     # We will reuse data loaded before, but we do need to know the config
