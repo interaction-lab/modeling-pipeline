@@ -276,6 +276,7 @@ dmypy.json
 *.html
 docs/_build
 *.wav
-
+*.npy
+data/feathered_data/
 data/walkthrough/video/
 data/walkthrough/va_output/
