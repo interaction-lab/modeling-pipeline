@@ -176,16 +176,16 @@ COMPUTER = "laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    "tree",
-    "tcn",
-    "xgb",
-    "forest",
-    "rnn",
-    "lstm",
+    # "tree",
+    # "tcn",
+    # "xgb",
+    # "forest",
+    # "rnn",
+    # "lstm",
     "gru",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 15  # Number of trials to search for each model
+NUM_TRIALS = 25  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 # Each class should be a binary column in the df
@@ -216,6 +216,7 @@ MAX_HISTORY = 25  # Max window the model can look through
 MAX_FEATURE_ROLL = 30
 
 LOG_TO_NEPTUNE = True
+INCLUDE_MULT = False
 
 
 # ***********************************************************************************
@@ -229,7 +230,7 @@ config = f"examples/active_speaker/{EXP_NAME}_configs/data_loader_{FEATURES}_con
 window_config = f"examples/active_speaker/{EXP_NAME}_configs/windowing_example.yml"
 
 # MTD has two responsibilities - to load the df and return a dataset
-builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH)
+builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH, INCLUDE_MULT)
 
 
 # Record experimental details for Neptune
@@ -241,6 +242,7 @@ params = {
     "weight classes": WEIGHT_CLASSES,
     "overlap": OVERLAP,
     "normalize": NORMALIZE,
+    "include mult": INCLUDE_MULT,
 }
 tags = [
     EXP_NAME,
