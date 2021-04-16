@@ -87,7 +87,7 @@ class MakeTurnsDataset():
         # model_params["rolling_window_size"] = rolling_window_size
         # model_params["step_size"] = step_size
         model_params["subsample_perc"] = subsample_perc
-        model_params["num_features"] = dataset.df.shape[1]-1
+        model_params["num_features"] = dataset.df.shape[1]
         model_params["class_weights"] = dataset.weights
         return dataset, model_params
 
@@ -149,22 +149,23 @@ def get_gaze_angle_multiplier(person_of_interest, angles_df, lower_bound=1, uppe
 
 def get_individuals_dataframes(session, person, direction_type, size, net):
     # Note: all csv's have headers so positions should be irrelevant
+    base_dir = "/media/chris/M2/2-Processed_Data"
+    # base_dir = "/media/interactionlab/M1/2- Processed Data"
 
     # csv with a column for each speaker label with text labels for who they are gazing at
-    looking_at = pd.read_csv(f"/media/interactionlab/M1/2- Processed Data/Gaze-Data/{session}/{direction_type}_at_{size}_cyl.csv")
-    # /media/interactionlab/M1/2- Proce
+    looking_at = pd.read_csv(f"{base_dir}/Gaze-Data/{session}/{direction_type}_at_{size}_cyl.csv")
     
     # csv with a column for each permutation of looker and subject with angle in radians
     # e.g. "left->right" | "left->center" | "right->left" | etc.
-    gaze_angles = pd.read_csv(f"/media/interactionlab/M1/2- Processed Data/Gaze-Data/{session}/{direction_type}_ang.csv")
+    gaze_angles = pd.read_csv(f"{base_dir}/Gaze-Data/{session}/{direction_type}_ang.csv")
 
     # csv with a column for each speaker label with binary values for talking or not talking
-    turns = pd.read_csv(f"/media/interactionlab/M1/2- Processed Data/Annotation-Turns/{session}/turns.csv")
+    turns = pd.read_csv(f"{base_dir}/Annotation-Turns/{session}/turns.csv")
 
     # csv with a single columns labeled "Confidence" and values from syncnet output
-    confidences = pd.read_csv(f"/media/interactionlab/M1/2- Processed Data/{net}_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv")
+    confidences = pd.read_csv(f"{base_dir}/{net}_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv", usecols=["Confidence"])
 
-    headpose = pd.read_csv(f"/media/interactionlab/M1/2- Processed Data/Video-OpenFace-headpose/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
+    headpose = pd.read_csv(f"{base_dir}/Video-OpenFace/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
     
     # Sampled from 30 to 25 fps
     looking_at = looking_at[looking_at.index % 6 != 0].reset_index(drop=True)
@@ -188,4 +189,4 @@ def get_individuals_dataframes(session, person, direction_type, size, net):
 
 
 if __name__ == '__main__':
-    mds = MakeTurnsDataset('config_pth', 'classes', 'max_roll', 'keep_unwindowed', 'normalize', 'fdf_path')
+    mds = MakeTurnsDataset('config_pth', 'classes', 'max_roll', 'keep_unwindowed', 'normalize', 'fdf_path', 'syncnet')
