@@ -79,7 +79,7 @@ def set_model_params(trial, model):
             "max_depth": trial.suggest_int("max_depth", 3, 18),
             "criterion": trial.suggest_categorical("criterion", ["gini", "entropy"]),
             "min_samples_leaf": trial.suggest_loguniform("min_samples", 1e-3, 0.5),
-            "window": trial.suggest_int("window", 1, MAX_HISTORY),
+            "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
             "max_features": trial.suggest_categorical(
                 "max_features", ["auto", "sqrt", "log2"]
             ),
@@ -89,13 +89,13 @@ def set_model_params(trial, model):
             # KNN params
             "n_neighbors": trial.suggest_int("n_neighbors", 3, 16),
             "leaf_size": trial.suggest_int("leaf_size", 15, 45),
-            "window": trial.suggest_int("window", 1, MAX_HISTORY),
+            "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
         }
     if model in ["xgb"]:
         model_params = {
             "max_depth": trial.suggest_int("max_depth", 5, 10),
             "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
-            "window": trial.suggest_int("window", 1, MAX_HISTORY),
+            "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
             "learning_rate": trial.suggest_loguniform("learning_rate", 0.001, 0.2),
         }
     if model in ["mlp"]:
@@ -103,7 +103,7 @@ def set_model_params(trial, model):
             # MLP Params
             "width": trial.suggest_int("width", 10, 100),
             "depth": trial.suggest_int("depth", 2, 7),
-            "window": trial.suggest_int("window", 1, MAX_HISTORY),
+            "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
             "activation": trial.suggest_categorical(
                 "activation", ["logistic", "tanh", "relu"]
             ),
@@ -116,7 +116,7 @@ def set_model_params(trial, model):
             "num_layers": trial.suggest_int("num_layers", 2, 8),
             "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-4),
             "batch_size": trial.suggest_int("batch_size", 5, 25),
-            "window": trial.suggest_int("window", 3, MAX_HISTORY),
+            "window": WINDOW,#trial.suggest_int("window", 3, MAX_HISTORY),
             "kern_size": trial.suggest_int("kern_size", 1, 5),
             "dropout": 0.25,
             "epochs": 200,
@@ -127,7 +127,7 @@ def set_model_params(trial, model):
             "num_layers": trial.suggest_int("num_layers", 2, 8),
             "lr": trial.suggest_loguniform("learning_rate", 5e-6, 5e-3),
             "batch_size": trial.suggest_int("batch_size", 5, 25),
-            "window": trial.suggest_int("window", 3, MAX_HISTORY),
+            "window": WINDOW,#trial.suggest_int("window", 3, MAX_HISTORY),
             "kern_size": trial.suggest_int("kern_size", 2, 7),
             "dropout": 0.25,
             "epochs": 200,
@@ -171,21 +171,21 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
 FDF_PATH = "./data/feathered_data/tmp-a.feather"
-EXP_NAME = "turn-taking"
-COMPUTER = "laptop"
+EXP_NAME = "syncnet"
+COMPUTER = "lambda"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    # "tree",
-    # "tcn",
-    # "xgb",
-    # "forest",
-    # "rnn",
-    # "lstm",
+    "tcn",
+    "tree",
+    "xgb",
+    "forest",
+    "rnn",
+    "lstm",
     "gru",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 25  # Number of trials to search for each model
+NUM_TRIALS = 35  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 # Each class should be a binary column in the df
@@ -213,10 +213,12 @@ OVERLAP = False  # Should examples be allowed to overlap with each other
 
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 MAX_HISTORY = 25  # Max window the model can look through
+WINDOW=25
 MAX_FEATURE_ROLL = 30
 
 LOG_TO_NEPTUNE = True
-INCLUDE_MULT = False
+INCLUDE_MULT = True
+NET='syncnet'
 
 
 # ***********************************************************************************
@@ -230,7 +232,7 @@ config = f"examples/active_speaker/{EXP_NAME}_configs/data_loader_{FEATURES}_con
 window_config = f"examples/active_speaker/{EXP_NAME}_configs/windowing_example.yml"
 
 # MTD has two responsibilities - to load the df and return a dataset
-builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH, INCLUDE_MULT)
+builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH, INCLUDE_MULT, net=NET)
 
 
 # Record experimental details for Neptune
@@ -247,9 +249,10 @@ params = {
 tags = [
     EXP_NAME,
     # f"{len(data_loader.config['sessions'])} sess",
-    "not-stat-windowed",
     COMPUTER,
     FEATURES,
+    WINDOW,
+    NET
 ]
 
 
