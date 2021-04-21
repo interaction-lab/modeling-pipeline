@@ -10,7 +10,9 @@ from optuna.samplers import TPESampler
 from pipeline.common.function_utils import timeit
 from pipeline.modeling.model_training import ModelTraining
 from .custom_dataset import MakeTurnsDataset as MTD
-
+from joblib import dump, load
+import torch
+from itertools import combinations
 
 
 def log_reports(metrics, columns, log_to_neptune, verbose=False):
@@ -161,6 +163,11 @@ def objective(trial):
 
     print("Logging reports")
     log_reports(trainer.metrics, trainer.metrics_names, LOG_TO_NEPTUNE)
+    if model in ["forest","tree","xgb"]:
+        dump(trainer.model, 'model.pt') 
+    if model in ["rnn","lstm","gru","tcn"]:
+        torch.save(model.state_dict(), "model.pt")
+    neptune.log_artifact('model.pt')
 
     return summary_metric
 
@@ -171,21 +178,21 @@ def objective(trial):
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
 FDF_PATH = "./data/feathered_data/tmp-a.feather"
-EXP_NAME = "syncnet"
+EXP_NAME = "active-speaker-exp"
 COMPUTER = "lambda"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
 models_to_try = [
-    "tcn",
-    "tree",
     "xgb",
-    "forest",
-    "rnn",
-    "lstm",
+    "tcn",
     "gru",
+    # "rnn",
+    # "lstm",
+    # "tree",
+    # "forest",
 ]  # Not working: "mlp", "knn"
 
-NUM_TRIALS = 35  # Number of trials to search for each model
+NUM_TRIALS = 25  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 # Each class should be a binary column in the df
@@ -205,93 +212,98 @@ KEEP_UNWINDOWED_FEATURES = False
 #   have been removed. The list of features to include is placed
 #   in a config file which matches the pattern:
 #   "./config/data_loader_{FEATURES}_config.yml"
-FEATURES = "pearson"  # by-hand, pearson, etc.
+# FEATURES = "pearson"  # by-hand, pearson, etc.
 
 SHUFFLE = True
 OVERLAP = False  # Should examples be allowed to overlap with each other
 # when data includes multiple frames
 
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
-MAX_HISTORY = 25  # Max window the model can look through
-WINDOW=25
+# MAX_HISTORY = 25  # Max window the model can look through
+# WINDOW=5
 MAX_FEATURE_ROLL = 30
 
 LOG_TO_NEPTUNE = True
-INCLUDE_MULT = True
-NET='syncnet'
+
+possible_features = ["at","ang","head","perfectmatch","syncnet"]
+all_possible = []
+for i in range(1,6):
+    comb = combinations(possible_features,i)
+    for i in list(comb): 
+        all_possible.append(list(i))
+# INCLUDE_MULT = False
+# NET='perfectmatch'
+for WINDOW in [5,12,25]:
+    for FEATURES in all_possible:
 
 
-# ***********************************************************************************
-# *****************Setup Experimental Details****************************************
-# Load the data here so it is not reloaded in each call to
-# optimize().
-# Set up experimental parameters to be shared with neptune.
-# Hyperparameters are set (and recorded) in optimize().
-# ***********************************************************************************
-config = f"examples/active_speaker/{EXP_NAME}_configs/data_loader_{FEATURES}_config.yml"
-window_config = f"examples/active_speaker/{EXP_NAME}_configs/windowing_example.yml"
+            # ***********************************************************************************
+            # *****************Setup Experimental Details****************************************
+            # Load the data here so it is not reloaded in each call to
+            # optimize().
+            # Set up experimental parameters to be shared with neptune.
+            # Hyperparameters are set (and recorded) in optimize().
+            # ***********************************************************************************
+            config = f"examples/active_speaker/{EXP_NAME}_configs/data_loader_pearson_config.yml"
+            window_config = f"examples/active_speaker/{EXP_NAME}_configs/windowing_example.yml"
 
-# MTD has two responsibilities - to load the df and return a dataset
-builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH, INCLUDE_MULT, net=NET)
-
-
-# Record experimental details for Neptune
-params = {
-    "trials": f"{NUM_TRIALS}",
-    "pruner": "no pruning",  # See optuna.create_study
-    "classes": ALL_CLASSES,
-    "patience": PATIENCE,
-    "weight classes": WEIGHT_CLASSES,
-    "overlap": OVERLAP,
-    "normalize": NORMALIZE,
-    "include mult": INCLUDE_MULT,
-}
-tags = [
-    EXP_NAME,
-    # f"{len(data_loader.config['sessions'])} sess",
-    COMPUTER,
-    FEATURES,
-    WINDOW,
-    NET
-]
+            # MTD has two responsibilities - to load the df and return a dataset
+            builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH, features=FEATURES)
 
 
-# ***************************************************************************
-# *****************Run The Experiment****************************************
-# Here were try and optimize the hyperparams of each
-# model we are training
-# ***************************************************************************
-# Start up Neptune, init call takes the name of the sandbox
-# Neptune requires that you have set your api key in the terminal
-if LOG_TO_NEPTUNE:
-    neptune.init(f"cmbirmingham/{EXP_NAME}")
-    neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
+            # Record experimental details for Neptune
+            params = {
+                "trials": f"{NUM_TRIALS}",
+                "pruner": "no pruning",  # See optuna.create_study
+                "classes": ALL_CLASSES,
+                "patience": PATIENCE,
+                "weight classes": WEIGHT_CLASSES,
+                "overlap": OVERLAP,
+                "normalize": NORMALIZE,
+            }
+            tags = [
+                COMPUTER,
+                WINDOW,
+            ]
+            tags = tags + FEATURES
 
-for model in models_to_try:
-    tags.append(model)
-    folder_location = "./data/studies/study_{}_{}.pkl".format(model, EXP_NAME)
-    sampler = TPESampler(seed=10)  # Needed for reproducing results
 
-    print(f"***********Creating study for {model} ***********")
-    study = optuna.create_study(
-        direction="maximize", pruner=optuna.pruners.NopPruner(), sampler=sampler
-    )
-    if LOG_TO_NEPTUNE:
-        experiment = neptune.create_experiment(
-            name=f"{model}_{EXP_NAME}",
-            params=params,
-            upload_source_files=[
-                "sweep.py",
-                "model_training.py",
-                "model_defs.py",
-                "data_utils.py",
-                config,
-            ],
-        )
-        for t in tags:
-            neptune.append_tag(t)
-        study.optimize(objective, n_trials=NUM_TRIALS, callbacks=[neptune_callback])
-        neptune.stop()
-    else:
-        study.optimize(objective, n_trials=NUM_TRIALS)
-    tags.remove(model)
+            # ***************************************************************************
+            # *****************Run The Experiment****************************************
+            # Here were try and optimize the hyperparams of each
+            # model we are training
+            # ***************************************************************************
+            # Start up Neptune, init call takes the name of the sandbox
+            # Neptune requires that you have set your api key in the terminal
+            if LOG_TO_NEPTUNE:
+                neptune.init(f"cmbirmingham/{EXP_NAME}")
+                neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
+
+            for model in models_to_try:
+                tags.append(model)
+                folder_location = "./data/studies/study_{}_{}.pkl".format(model, EXP_NAME)
+                sampler = TPESampler(seed=10)  # Needed for reproducing results
+
+                print(f"***********Creating study for {model} ***********")
+                study = optuna.create_study(
+                    direction="maximize", pruner=optuna.pruners.NopPruner(), sampler=sampler
+                )
+                if LOG_TO_NEPTUNE:
+                    experiment = neptune.create_experiment(
+                        name=f"{model}_{EXP_NAME}",
+                        params=params,
+                        upload_source_files=[
+                            "sweep.py",
+                            "model_training.py",
+                            "model_defs.py",
+                            "data_utils.py",
+                            config,
+                        ],
+                    )
+                    for t in tags:
+                        neptune.append_tag(t)
+                    study.optimize(objective, n_trials=NUM_TRIALS, callbacks=[neptune_callback])
+                    neptune.stop()
+                else:
+                    study.optimize(objective, n_trials=NUM_TRIALS)
+                tags.remove(model)

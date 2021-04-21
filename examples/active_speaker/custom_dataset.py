@@ -10,7 +10,7 @@ import math
 
 
 class MakeTurnsDataset():
-    def __init__(self, config_pth, classes, max_roll, keep_unwindowed, normalize, fdf_path, include_mult, net="perfectmatch") -> None:
+    def __init__(self, config_pth, classes, max_roll, keep_unwindowed, normalize, fdf_path, features=["at","ang","head","perfectmatch"]) -> None:
         self.classes = ["speaking"]
         self.config_pth = config_pth
         self.max_roll = max_roll
@@ -24,35 +24,38 @@ class MakeTurnsDataset():
         skip = [4,5,14,18,19]
         sessions = range(1,28)
 
-        sdfs, cdfs, at_mdfs, ang_mdfs, hdfs = [], [], [], [], []
-
+        sdfs, pcdfs, scdfs, at_mdfs, ang_mdfs, hdfs = [], [], [], [], [], []
+        if "perfectmatch" in features:
+            net="perfectmatch"
+        if "syncnet" in features:
+            net="syncnet"
         for session in sessions:
             if session not in skip:
                 for person in positions:
 
-                    looking_at, speaker_labels, confidences, gaze_angles, headpose = get_individuals_dataframes(session, person, "pose", "superlarge", net)
-                    if include_mult:
-                        at_multipliers = get_gazed_at_multiplier(person, looking_at)
-                        ang_multipliers = get_gaze_angle_multiplier(person, gaze_angles)
+                    looking_at, speaker_labels, sync_confidences, perf_confidences, gaze_angles, headpose = get_individuals_dataframes(session, person, "pose", "superlarge")
+                    at_multipliers = get_gazed_at_multiplier(person, looking_at)
+                    ang_multipliers = get_gaze_angle_multiplier(person, gaze_angles)
                     
                     sdfs.append(speaker_labels)
-                    cdfs.append(confidences)
-                    if include_mult:
-                        at_mdfs.append(at_multipliers)
-                        ang_mdfs.append(ang_multipliers)
-                        hdfs.append(headpose)
-
+                    pcdfs.append(perf_confidences)
+                    scdfs.append(sync_confidences)
+                    at_mdfs.append(at_multipliers)
+                    ang_mdfs.append(ang_multipliers)
+                    hdfs.append(headpose)
+        dfs = {}
         speaker_labels = pd.concat(sdfs, axis=0)
-        confidences = pd.concat(cdfs, axis=0)
-        if include_mult:
-            at_multipliers = pd.concat(at_mdfs, axis=0)
-            ang_multipliers = pd.concat(ang_mdfs, axis=0)
-            headposees = pd.concat(hdfs, axis=0)
+        dfs["perfectmatch"] = pd.concat(pcdfs, axis=0)
+        dfs["syncnet"] = pd.concat(scdfs, axis=0)
+        dfs["at"] = pd.concat(at_mdfs, axis=0)
+        dfs["ang"] = pd.concat(ang_mdfs, axis=0)
+        dfs["head"] = pd.concat(hdfs, axis=0)
+        to_concat = [speaker_labels]
+        for f in features:
+            to_concat.append(dfs[f])
 
-        if include_mult:
-            self.df = pd.concat([speaker_labels, confidences, at_multipliers, ang_multipliers, headposees], axis=1)
-        else:
-            self.df = pd.concat([speaker_labels, confidences], axis=1)
+        self.df = pd.concat(to_concat, axis=1)
+            
 
         self.df.reset_index(inplace=True,drop=True)
         self.df.to_feather(fdf_path)
@@ -147,10 +150,10 @@ def get_gaze_angle_multiplier(person_of_interest, angles_df, lower_bound=1, uppe
     assert angles_df["multiple_ang"].max() <= upper_bound, "Check your math"
     return angles_df[["multiple_ang"]].copy()
 
-def get_individuals_dataframes(session, person, direction_type, size, net):
+def get_individuals_dataframes(session, person, direction_type, size):
     # Note: all csv's have headers so positions should be irrelevant
-    base_dir = "/media/chris/M2/2-Processed_Data"
-    # base_dir = "/media/interactionlab/M1/2- Processed Data"
+    # base_dir = "/media/chris/M2/2-Processed_Data"
+    base_dir = "/media/interactionlab/M1/2- Processed Data"
 
     # csv with a column for each speaker label with text labels for who they are gazing at
     looking_at = pd.read_csv(f"{base_dir}/Gaze-Data/{session}/{direction_type}_at_{size}_cyl.csv")
@@ -163,9 +166,11 @@ def get_individuals_dataframes(session, person, direction_type, size, net):
     turns = pd.read_csv(f"{base_dir}/Annotation-Turns/{session}/turns.csv")
 
     # csv with a single columns labeled "Confidence" and values from syncnet output
-    confidences = pd.read_csv(f"{base_dir}/{net}_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv", usecols=["Confidence"])
+    sync_confidences = pd.read_csv(f"{base_dir}/syncnet_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv", usecols=["Confidence"])
+    perf_confidences = pd.read_csv(f"{base_dir}/perfectmatch_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv", usecols=["Confidence"])
 
-    headpose = pd.read_csv(f"{base_dir}/Video-OpenFace/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
+    # headpose = pd.read_csv(f"{base_dir}/Video-OpenFace/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
+    headpose = pd.read_csv(f"{base_dir}/Video-OpenFace-headpose/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
     
     # Sampled from 30 to 25 fps
     looking_at = looking_at[looking_at.index % 6 != 0].reset_index(drop=True)
@@ -177,15 +182,16 @@ def get_individuals_dataframes(session, person, direction_type, size, net):
     speaker_labels = turns[person].to_frame(name="speaking").reset_index(drop=True)
     
     
-    max_len = min(speaker_labels.shape[0], confidences.shape[0], looking_at.shape[0], gaze_angles.shape[0])
+    max_len = min(speaker_labels.shape[0], sync_confidences.shape[0], looking_at.shape[0], gaze_angles.shape[0])
 
     speaker_labels = speaker_labels.iloc[:max_len].fillna(0).reset_index(drop=True)
-    confidences = confidences.iloc[:max_len].fillna(0).reset_index(drop=True)
+    sync_confidences = sync_confidences.iloc[:max_len].fillna(0).reset_index(drop=True)
+    perf_confidences = perf_confidences.iloc[:max_len].fillna(0).reset_index(drop=True)
     looking_at = looking_at.iloc[:max_len].fillna(0).reset_index(drop=True)
     gaze_angles = gaze_angles.iloc[:max_len].fillna(0).reset_index(drop=True)
     headpose = headpose.iloc[:max_len].fillna(0).reset_index(drop=True)
 
-    return looking_at, speaker_labels, confidences, gaze_angles, headpose
+    return looking_at, speaker_labels, sync_confidences, perf_confidences, gaze_angles, headpose
 
 
 if __name__ == '__main__':
