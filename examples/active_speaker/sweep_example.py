@@ -368,7 +368,7 @@ for WINDOW in WINDOWS:
             "weight classes": WEIGHT_CLASSES,
         }
         tags = [
-            COMPUTER,run = neptune.init(project='cmbirmingham/cross-validate-asd')
+            COMPUTER,
             str(WINDOW),
         ]
         tags = tags + FEATURES
