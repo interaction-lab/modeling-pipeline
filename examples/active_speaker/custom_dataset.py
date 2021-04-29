@@ -10,89 +10,56 @@ import math
 
 
 class MakeTurnsDataset():
-    def __init__(self, config_pth, classes, max_roll, keep_unwindowed, normalize, fdf_path, features=["at","ang","head","perfectmatch"]) -> None:
-        self.classes = ["speaking"]
-        self.config_pth = config_pth
-        self.max_roll = max_roll
-        self.keep_unwindowed = keep_unwindowed
-        self.normalize = normalize
+    def __init__(self, train_sessions, val_sessions, fdf_path, features=["at","ang","head","perfectmatch"]) -> None:
         self.fdf_path = fdf_path
 
-        # self.class_list = [i for _, v in classes.items() for i in v]
+        df = self.get_df(train_sessions,"chris", features)
+        df.to_feather(fdf_path+".train")
 
+        df = self.get_df(val_sessions,"chris", features)
+        df.to_feather(fdf_path+".val")
+
+        df = self.get_df(range(1,16),"kalin", features)
+        df.to_feather(fdf_path+".test")
+
+    def get_df(self,sessions,dataset, features):
+        if dataset == "chris":
+            skip = [4,5,14,18,19]
+        else:
+            skip=[]
         positions = ["right","left","center"]
-        skip = [4,5,14,18,19]
-        sessions = range(1,28)
-
-        sdfs, pcdfs, scdfs, at_mdfs, ang_mdfs, hdfs = [], [], [], [], [], []
-        if "perfectmatch" in features:
-            net="perfectmatch"
-        if "syncnet" in features:
-            net="syncnet"
+        sdfs, pcdfs, scdfs, at_mdfs, ang_mdfs = [], [], [], [], []
         for session in sessions:
             if session not in skip:
                 for person in positions:
 
-                    looking_at, speaker_labels, sync_confidences, perf_confidences, gaze_angles, headpose = get_individuals_dataframes(session, person, "pose", "superlarge")
+                    looking_at, speaker_labels, sync, perf, gaze_angles = get_individuals_dataframes(session, person, "pose", "superlarge", dataset)
                     at_multipliers = get_gazed_at_multiplier(person, looking_at)
                     ang_multipliers = get_gaze_angle_multiplier(person, gaze_angles)
                     
                     sdfs.append(speaker_labels)
-                    pcdfs.append(perf_confidences)
-                    scdfs.append(sync_confidences)
+                    pcdfs.append(perf)
+                    scdfs.append(sync)
                     at_mdfs.append(at_multipliers)
                     ang_mdfs.append(ang_multipliers)
-                    hdfs.append(headpose)
         dfs = {}
         speaker_labels = pd.concat(sdfs, axis=0)
         dfs["perfectmatch"] = pd.concat(pcdfs, axis=0)
         dfs["syncnet"] = pd.concat(scdfs, axis=0)
         dfs["at"] = pd.concat(at_mdfs, axis=0)
         dfs["ang"] = pd.concat(ang_mdfs, axis=0)
-        dfs["head"] = pd.concat(hdfs, axis=0)
+
         to_concat = [speaker_labels]
+
         for f in features:
             to_concat.append(dfs[f])
 
-        self.df = pd.concat(to_concat, axis=1)
-            
+        df = pd.concat(to_concat, axis=1)
+        
+        df.reset_index(inplace=True,drop=True)
+        return df
 
-        self.df.reset_index(inplace=True,drop=True)
-        self.df.to_feather(fdf_path)
 
-    @timeit
-    def transform_dataset(self, trial, df, model_params, shuffle, window_config):
-        print("\n\n*****Transforming Dataset*******")
-        # tdf = TransformDF()
-        # rolling_window_size = trial.suggest_int("r_win_size", 1, self.max_roll)
-        # step_size = trial.suggest_int("step_size", 1, 6)
-
-        # df = tdf.apply_rolling_window(
-        #     df,
-        #     rolling_window_size,
-        #     self.keep_unwindowed,
-        #     window_config,
-        # )
-        # df = tdf.sub_sample(df, step_size)
-        # if self.normalize:
-        #     df = tdf.normalize_dataset(df, self.classes)
-
-        subsample_perc = trial.suggest_int("sub_sample_neg_perc", 50, 95)
-
-        dataset = TimeSeriesDataset(
-            df,
-            labels=self.classes,
-            shuffle=shuffle,
-            subsample_perc=subsample_perc,
-            # data_hash=FILE_HASH,
-        )
-        dataset.setup_dataset(window=model_params["window"])
-        # model_params["rolling_window_size"] = rolling_window_size
-        # model_params["step_size"] = step_size
-        model_params["subsample_perc"] = subsample_perc
-        model_params["num_features"] = dataset.df.shape[1]
-        model_params["class_weights"] = dataset.weights
-        return dataset, model_params
 
 
 def get_gazed_at_multiplier(person_of_interest, looking_at, add_to_multiply=.5, base_multiple=1):
@@ -149,50 +116,72 @@ def get_gaze_angle_multiplier(person_of_interest, angles_df, lower_bound=1, uppe
     # print(angles_df["multiple_ang"].min(),angles_df["multiple_ang"].max())
     assert angles_df["multiple_ang"].max() <= upper_bound, "Check your math"
     return angles_df[["multiple_ang"]].copy()
-
-def get_individuals_dataframes(session, person, direction_type, size):
+    
+def get_individuals_dataframes(session, person, direction_type, size, dataset):
     # Note: all csv's have headers so positions should be irrelevant
-    # base_dir = "/media/chris/M2/2-Processed_Data"
-    base_dir = "/media/interactionlab/M1/2- Processed Data"
 
-    # csv with a column for each speaker label with text labels for who they are gazing at
-    looking_at = pd.read_csv(f"{base_dir}/Gaze-Data/{session}/{direction_type}_at_{size}_cyl.csv")
-    
-    # csv with a column for each permutation of looker and subject with angle in radians
-    # e.g. "left->right" | "left->center" | "right->left" | etc.
-    gaze_angles = pd.read_csv(f"{base_dir}/Gaze-Data/{session}/{direction_type}_ang.csv")
+    if dataset=="kalin":
+        base_path = "/home/chris/code/modeling-pipeline/data/active_speaker/"
+        # csv with a column for each speaker label with text labels for who they are gazing at
+        looking_at = pd.read_csv(f"{base_path}/kinect_pose/{session}G3_KINECT_DISCRETE_{size.upper()}.csv")
 
-    # csv with a column for each speaker label with binary values for talking or not talking
-    turns = pd.read_csv(f"{base_dir}/Annotation-Turns/{session}/turns.csv")
+        # csv with a column for each permutation of looker and subject with angle in radians
+        # e.g. "left->right" | "left->center" | "right->left" | etc.
+        gaze_angles = pd.read_csv(f"{base_path}/kinect_pose/{session}G3_KINECT_CONTINUOUS.csv")
 
-    # csv with a single columns labeled "Confidence" and values from syncnet output
-    sync_confidences = pd.read_csv(f"{base_dir}/syncnet_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv", usecols=["Confidence"])
-    perf_confidences = pd.read_csv(f"{base_dir}/perfectmatch_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv", usecols=["Confidence"])
+        # csv with a column for each speaker label with binary values for talking or not talking
+        turns = pd.read_csv(f"{base_path}/kinect_pose/{session}G3_VAD.csv")
 
-    # headpose = pd.read_csv(f"{base_dir}/Video-OpenFace/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
-    headpose = pd.read_csv(f"{base_dir}/Video-OpenFace-headpose/{session}/{person}.csv", usecols=["pose_Rx","pose_Ry"])
-    
+        # csv with a single columns labeled "Confidence" and values from syncnet output
+        if person == 'center':
+            sconfidences = pd.read_csv(f"{base_path}/kinect_pose/{session}G3C_SYNCNET.csv")
+            pconfidences = pd.read_csv(f"{base_path}/kinect_pose/{session}G3C_PERFECTMATCH.csv")
+        if person == 'left':
+            sconfidences = pd.read_csv(f"{base_path}/kinect_pose/{session}G3L_SYNCNET.csv")
+            pconfidences = pd.read_csv(f"{base_path}/kinect_pose/{session}G3L_PERFECTMATCH.csv")
+        if person == 'right':
+            sconfidences = pd.read_csv(f"{base_path}/kinect_pose/{session}G3R_SYNCNET.csv")
+            pconfidences = pd.read_csv(f"{base_path}/kinect_pose/{session}G3R_PERFECTMATCH.csv")
+
+    if dataset=="chris":
+        # Note: all csv's have headers so positions should be irrelevant
+        base_path = f"/home/chris/code/modeling-pipeline/data/active_speaker/facilitator"
+
+        # csv with a column for each speaker label with text labels for who they are gazing at
+        looking_at = pd.read_csv(f"{base_path}/Gaze-Data/{session}/{direction_type}_at_{size}_cyl.csv")
+        
+        # csv with a column for each permutation of looker and subject with angle in radians
+        # e.g. "left->right" | "left->center" | "right->left" | etc.
+        gaze_angles = pd.read_csv(f"{base_path}/Gaze-Data/{session}/{direction_type}_ang.csv")
+
+        # csv with a column for each speaker label with binary values for talking or not talking
+        turns = pd.read_csv(f"{base_path}/Annotation-Turns/{session}/turns.csv")
+
+        # csv with a single columns labeled "Confidence" and values from syncnet output
+        sconfidences = pd.read_csv(f"{base_path}/syncnet_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv")
+        pconfidences = pd.read_csv(f"{base_path}/perfectmatch_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv")
+
     # Sampled from 30 to 25 fps
     looking_at = looking_at[looking_at.index % 6 != 0].reset_index(drop=True)
     gaze_angles = gaze_angles[gaze_angles.index % 6 != 0].reset_index(drop=True)
     turns = turns[turns.index % 6 != 0].reset_index(drop=True)
-    headpose = headpose[headpose.index % 6 != 0].reset_index(drop=True)
 
     # Get individual speaker from turns dataframe
     speaker_labels = turns[person].to_frame(name="speaking").reset_index(drop=True)
-    
-    
-    max_len = min(speaker_labels.shape[0], sync_confidences.shape[0], looking_at.shape[0], gaze_angles.shape[0])
+
+    max_len = min(speaker_labels.shape[0], pconfidences.shape[0], sconfidences.shape[0], looking_at.shape[0], gaze_angles.shape[0])
+
+    sconfidences.rename(columns = {'Confidence' : 'sConfidence'}, inplace = True)
+    pconfidences.rename(columns = {'Confidence' : 'pConfidence'}, inplace = True)
 
     speaker_labels = speaker_labels.iloc[:max_len].fillna(0).reset_index(drop=True)
-    sync_confidences = sync_confidences.iloc[:max_len].fillna(0).reset_index(drop=True)
-    perf_confidences = perf_confidences.iloc[:max_len].fillna(0).reset_index(drop=True)
+    pconfidences = pconfidences.iloc[:max_len].fillna(0).reset_index(drop=True)
+    sconfidences = sconfidences.iloc[:max_len].fillna(0).reset_index(drop=True)
     looking_at = looking_at.iloc[:max_len].fillna(0).reset_index(drop=True)
     gaze_angles = gaze_angles.iloc[:max_len].fillna(0).reset_index(drop=True)
-    headpose = headpose.iloc[:max_len].fillna(0).reset_index(drop=True)
 
-    return looking_at, speaker_labels, sync_confidences, perf_confidences, gaze_angles, headpose
+    # return looking_at, speaker_labels, sync_confidences, perf_confidences, gaze_angles, headpose
+    return looking_at, speaker_labels, sconfidences, pconfidences, gaze_angles
 
-
-if __name__ == '__main__':
-    mds = MakeTurnsDataset('config_pth', 'classes', 'max_roll', 'keep_unwindowed', 'normalize', 'fdf_path', 'syncnet')
+# if __name__ == '__main__':
+    # mds = MakeTurnsDataset('config_pth', 'classes', 'max_roll',',', 'fdf_path', 'syncnet')

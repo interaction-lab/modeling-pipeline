@@ -1,29 +1,38 @@
-import neptune
+# import neptune
+import neptune.new as neptune
 import optuna
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch
+from joblib import dump, load
+import itertools
 
 import neptunecontrib.monitoring.optuna as opt_utils
-from neptunecontrib.api import log_table
 from optuna.samplers import TPESampler
 
+from pipeline.modeling.datasets import TimeSeriesDataset
 from pipeline.common.function_utils import timeit
 from pipeline.modeling.model_training import ModelTraining
 from .custom_dataset import MakeTurnsDataset as MTD
-from joblib import dump, load
-import torch
+import argparse
 from itertools import combinations
 
+parser = argparse.ArgumentParser(description='Sweep hyperparams')
+parser.add_argument('-m','--model', help='model to use, defaults to none', required=False, default=None)
+parser.add_argument('-w','--window', help='Description for bar argument', required=False, default=None)
+args = vars(parser.parse_args())
 
 def log_reports(metrics, columns, log_to_neptune, verbose=False):
     # Here is where we can get creative showing what we want
+    print("Logging reports")
     for k in ["train", "val", "test"]:
         if k == "test" or model in ["forest", "tree", "mlp", "knn", "xgb"]:
             df = pd.DataFrame([metrics[k]], columns=columns)
         else:
             df = pd.DataFrame(metrics[k], columns=columns)
         if log_to_neptune:
-            log_table(k, df)
+            # log_table(k, df)
+            run['metrics/df'] = neptune.types.File.as_html(df)
         else:
             print(k, df)
         metrics_to_log = [
@@ -40,7 +49,9 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
             for m in metrics_to_log:
                 if m in c:
                     if log_to_neptune:
-                        neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
+                        # neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
+                        run[f"metrics/{k}/{c}"].log(df[c].iloc[-1])
+                        # print(f"TO NEPTUNE AND BEYOND {k}_{c}", df[c].iloc[-1])
                     elif verbose:
                         print(f"{k}_{c}", df[c].iloc[-1])
     if model in ["forest", "tree", "mlp", "knn", "xgb"]:
@@ -68,11 +79,39 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
         if verbose:
             plt.show()
         if log_to_neptune:
-            experiment.log_image("diagrams", fig)
+            run["metrics/diagrams"].log(fig)
     return
 
+def set_model_params(model):
+    model_params = {}
+    if model in ["xgb"]:
+        model_params = {
+            "max_depth": 12,
+            "booster":  "dart",
+            "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
+            "learning_rate": .001,
+        }
+    if model in ["rnn", "gru", "lstm", "tcn"]:
+        model_params = {
+            "num_layers": 6,
+            "lr": 5e-5,
+            "batch_size": 25,
+            "window": WINDOW,#trial.suggest_int("window", 3, MAX_HISTORY),
+            "kern_size": 5,
+            "dropout": 0.25,
+            "epochs": 200,
+        }
 
-def set_model_params(trial, model):
+    model_params["patience"] = PATIENCE
+    model_params["weight_classes"] = WEIGHT_CLASSES
+    model_params["model"] = model
+    model_params["class_names"] = params["classes"]
+    model_params["num_classes"] = len(model_params["class_names"])
+    model_params["classes_org"] = LABELS_CLASSES
+
+    return model_params
+
+def search_model_params(trial, model):
     model_params = {}
 
     if model in ["tree", "forest"]:
@@ -95,10 +134,10 @@ def set_model_params(trial, model):
         }
     if model in ["xgb"]:
         model_params = {
-            "max_depth": trial.suggest_int("max_depth", 5, 10),
+            "max_depth": trial.suggest_int("max_depth", 5, 15),
             "booster": trial.suggest_categorical("booster", ["gbtree", "dart"]),
             "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
-            "learning_rate": trial.suggest_loguniform("learning_rate", 0.001, 0.2),
+            "learning_rate": trial.suggest_loguniform("learning_rate", 0.0001, 0.2),
         }
     if model in ["mlp"]:
         model_params = {
@@ -144,30 +183,89 @@ def set_model_params(trial, model):
 
     return model_params
 
+def read_dataset():
+    train_df = pd.read_feather(FDF_PATH+".train")
+    val_df = pd.read_feather(FDF_PATH+".val")
+    test_df = pd.read_feather(FDF_PATH+".test")
+
+    dataset = TimeSeriesDataset(
+        train_df,
+        val_df,
+        test_df,
+        labels=ALL_CLASSES,
+        shuffle=SHUFFLE,
+        subsample_perc=75,
+    )
+    return dataset
+
+def save_model(model_name, model):
+    if model_name in ["forest","tree","xgb"]:
+        dump(model, 'model.pt') 
+    if model in ["rnn","lstm","gru","tcn"]:
+        torch.save(model.state_dict(), "model.pt")
+
 
 @timeit
-def objective(trial):
-    model_params = set_model_params(trial, model)
+def opt_objective(trial):
+    model_params = search_model_params(trial, model)
+    dataset = read_dataset()
+    dataset.setup_dataset(window=model_params["window"])
 
-    df = pd.read_feather(FDF_PATH)
+    model_params["subsample_perc"] = 75
+    model_params["num_features"] = dataset.train_df.shape[1]
+    model_params["class_weights"] = dataset.weights
 
-    dataset, model_params = builder.transform_dataset(trial, df, model_params, SHUFFLE, window_config)
-    
-    if LOG_TO_NEPTUNE:
-        neptune.send_metric("dataset_shape", dataset.df.shape[0])
-
-    print("\n\n******Training and evaluating model******")
     trainer = ModelTraining(model_params, dataset, trial, verbose=True)
-    print(f"Traing and eval on data (size={dataset.df.shape}")
     summary_metric = trainer.train_and_eval_model()
+    save_model(model, trainer.model)
 
-    print("Logging reports")
     log_reports(trainer.metrics, trainer.metrics_names, LOG_TO_NEPTUNE)
-    if model in ["forest","tree","xgb"]:
-        dump(trainer.model, 'model.pt') 
-    if model in ["rnn","lstm","gru","tcn"]:
-        torch.save(trainer.model.state_dict(), "model.pt")
-    neptune.log_artifact('model.pt')
+
+    if LOG_TO_NEPTUNE:
+        run["metrics/dataset_shape"].log(dataset.train_df.shape[0])
+        run["model_params"] = model_params
+
+        opt_hist = optuna.visualization.plot_optimization_history(study)
+        run["optuna/opt_history"].upload(opt_hist)
+        par_coord = optuna.visualization.plot_parallel_coordinate(study)
+        run["optuna/parallel_coord"].upload(par_coord)
+
+        run[f'model_checkpoints/model-{summary_metric:.03f}.pt'].upload('model.pt')
+
+    return summary_metric
+
+@timeit
+def cross_validate(k=9):
+    num_sessions = 27
+    fold_size = int(num_sessions/k)
+    flatten = itertools.chain.from_iterable
+
+    assert k>1, "must have at least two folds"
+    for i in range(k):
+        sets = [[f+n*fold_size+1 for f in range(fold_size)] for n in range(k)]
+
+        val_sessions = sets.pop(i)
+        train_sessions = list(flatten(sets))
+        MTD(train_sessions,val_sessions, FDF_PATH, features=FEATURES)
+        model_params = set_model_params(model)
+        dataset = read_dataset()
+        dataset.setup_dataset(window=model_params["window"])
+
+        model_params["subsample_perc"] = 75
+        model_params["num_features"] = dataset.train_df.shape[1]
+        model_params["class_weights"] = dataset.weights
+
+        trainer = ModelTraining(model_params, dataset, None, verbose=True)
+        summary_metric = trainer.train_and_eval_model()
+        save_model(model, trainer.model)
+
+        log_reports(trainer.metrics, trainer.metrics_names, LOG_TO_NEPTUNE)
+
+        if LOG_TO_NEPTUNE:
+            run["metrics/dataset_shape"].log(dataset.train_df.shape[0])
+            run["model_params"] = model_params
+
+            run[f'model_checkpoints/{i}-model-{summary_metric:.03f}.pt'].upload('model.pt')
 
     return summary_metric
 
@@ -177,22 +275,41 @@ def objective(trial):
 # These parameters are used for controlling the sweep as
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
-FDF_PATH = "./data/feathered_data/tmp-a.feather"
-EXP_NAME = "active-speaker-exp"
+# FDF_PATH = "./data/feathered_data/tmp-a.feather"
+EXP_NAME = "cross-validate-asd"
 COMPUTER = "laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
-models_to_try = [
-    # "xgb",
-    # "tcn",
+# Not working: "mlp", "knn"
+available_models = [
+    "tree",
+    "forest",
+    "xgb",
+    "tcn",
+    "rnn",
+    "lstm",
     "gru",
-    # "rnn",
-    # "lstm",
-    # "tree",
-    # "forest",
-]  # Not working: "mlp", "knn"
+]  
 
-NUM_TRIALS = 15  # Number of trials to search for each model
+if args["model"]:
+    assert args["model"] in available_models, "Model must be among list of available models"
+    models_to_try = [args["model"]]
+else:
+    models_to_try = [
+        "xgb",
+        "gru",
+        "tcn"
+    ]
+available_windows = [5,12,25]
+if args["window"]:
+    args["window"] = int(args["window"])
+    assert args["window"] in available_windows, "window must be among list of available windows"
+    WINDOWS = [args["window"]]
+else:
+    WINDOWS = available_windows
+
+
+NUM_TRIALS = 5  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
 # Each class should be a binary column in the df
@@ -206,40 +323,28 @@ LABELS_CLASSES = {
 ALL_CLASSES = [i for _, v in LABELS_CLASSES.items() for i in v]
 
 WEIGHT_CLASSES = True  # Weight loss against class imbalance
-KEEP_UNWINDOWED_FEATURES = False
-
-# Features provide a label for describing how correlated features
-#   have been removed. The list of features to include is placed
-#   in a config file which matches the pattern:
-#   "./config/data_loader_{FEATURES}_config.yml"
-# FEATURES = "pearson"  # by-hand, pearson, etc.
-
-SHUFFLE = True
-OVERLAP = False  # Should examples be allowed to overlap with each other
-# when data includes multiple frames
-
+SHUFFLE = False
 NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
-# MAX_HISTORY = 25  # Max window the model can look through
-# WINDOW=5
-MAX_FEATURE_ROLL = 30
-
+OPTUNA_SEARCH = False
 LOG_TO_NEPTUNE = True
 
-possible_features = ["at","ang","head","perfectmatch","syncnet"]
+# possible_features = ["at","ang","head","perfectmatch","syncnet"]
+possible_features = ["at","ang","perfectmatch","syncnet"]
 all_possible = []
 for i in range(1,len(possible_features)+1):
     comb = combinations(possible_features,i)
     for i in list(comb): 
         all_possible.append(list(i))
-# INCLUDE_MULT = False
-# NET='perfectmatch'
-for WINDOW in [25]:
-    if WINDOW==5:
-        all_features = all_possible[12:]
-    else:
-        all_features = all_possible
+# all_possible = [["syncnet"], ["ang","syncnet"],["perfectmatch"], ["ang","perfectmatch"]]
+# all_possible = [["ang","syncnet"]]
+
+for WINDOW in WINDOWS:
+    # if WINDOW==25:
+    #     all_features = all_possible[9:]
+    # else:
+    #     all_features = all_possible
     # all_features = all_possible
-    for FEATURES in all_features:
+    for FEATURES in all_possible:
         # ***********************************************************************************
         # *****************Setup Experimental Details****************************************
         # Load the data here so it is not reloaded in each call to
@@ -247,11 +352,11 @@ for WINDOW in [25]:
         # Set up experimental parameters to be shared with neptune.
         # Hyperparameters are set (and recorded) in optimize().
         # ***********************************************************************************
-        config = f"examples/active_speaker/{EXP_NAME}_configs/data_loader_pearson_config.yml"
         window_config = f"examples/active_speaker/{EXP_NAME}_configs/windowing_example.yml"
+        FDF_PATH = f"./data/feathered_data/tmp-{WINDOW}-{'-'.join(FEATURES)}.feather"
 
         # MTD has two responsibilities - to load the df and return a dataset
-        builder = MTD(config, LABELS_CLASSES, MAX_FEATURE_ROLL, KEEP_UNWINDOWED_FEATURES, NORMALIZE, FDF_PATH, features=FEATURES)
+        MTD(range(1,20),range(20,28), FDF_PATH, features=FEATURES)
 
 
         # Record experimental details for Neptune
@@ -261,13 +366,10 @@ for WINDOW in [25]:
             "classes": ALL_CLASSES,
             "patience": PATIENCE,
             "weight classes": WEIGHT_CLASSES,
-            "overlap": OVERLAP,
-            "normalize": NORMALIZE,
         }
         tags = [
-            COMPUTER,
-            WINDOW,
-            "gru-only"
+            COMPUTER,run = neptune.init(project='cmbirmingham/cross-validate-asd')
+            str(WINDOW),
         ]
         tags = tags + FEATURES
 
@@ -279,35 +381,32 @@ for WINDOW in [25]:
         # ***************************************************************************
         # Start up Neptune, init call takes the name of the sandbox
         # Neptune requires that you have set your api key in the terminal
-        if LOG_TO_NEPTUNE:
-            neptune.init(f"cmbirmingham/{EXP_NAME}")
-            neptune_callback = opt_utils.NeptuneCallback(log_study=True, log_charts=True)
-
         for model in models_to_try:
             tags.append(model)
-            folder_location = "./data/studies/study_{}_{}.pkl".format(model, EXP_NAME)
-            sampler = TPESampler(seed=10)  # Needed for reproducing results
 
-            print(f"***********Creating study for {model} ***********")
-            study = optuna.create_study(
-                direction="maximize", pruner=optuna.pruners.NopPruner(), sampler=sampler
-            )
             if LOG_TO_NEPTUNE:
-                experiment = neptune.create_experiment(
-                    name=f"{model}_{EXP_NAME}",
-                    params=params,
-                    upload_source_files=[
-                        "sweep.py",
-                        "model_training.py",
-                        "model_defs.py",
-                        "data_utils.py",
-                        config,
-                    ],
-                )
+                run = neptune.init(f"cmbirmingham/{EXP_NAME}", name="test-run", tags=tags)
+                run["parameters"] = params
                 for t in tags:
-                    neptune.append_tag(t)
-                study.optimize(objective, n_trials=NUM_TRIALS, callbacks=[neptune_callback])
-                neptune.stop()
+                    run["sys/tags"].add(t)
+
+            if OPTUNA_SEARCH:
+                print(f"***********Creating study for {model} ***********")
+                study = optuna.create_study(
+                    direction="maximize", 
+                    pruner=optuna.pruners.NopPruner(), 
+                    sampler=TPESampler(seed=10)
+                )
+
+                study.optimize(opt_objective, n_trials=NUM_TRIALS)
+
+                if LOG_TO_NEPTUNE:
+                    importance = optuna.visualization.plot_param_importances(study)
+                    run["optuna/param_importance"].upload(importance)
+                    run.stop()
+
+                tags.remove(model)
             else:
-                study.optimize(objective, n_trials=NUM_TRIALS)
-            tags.remove(model)
+                cross_validate()
+                if LOG_TO_NEPTUNE:
+                    run.stop()

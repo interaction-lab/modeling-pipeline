@@ -365,9 +365,9 @@ class ModelTraining:
         X, Y = self.dataset.get_sk_dataset()
         self.metrics["val"], val_result_summary = self.test_fit(X, Y)
 
-        self.dataset.status = "validation"
+        self.dataset.status = "testing"
         X, Y = self.dataset.get_sk_dataset()
-        self.metrics["test"], test_result_summary = self.test_fit(X, Y)
+        self.metrics["test"], _ = self.test_fit(X, Y)
 
         print(f"\nTest results:")
         test_results_df = pd.DataFrame(
