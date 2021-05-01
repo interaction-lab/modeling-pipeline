@@ -281,3 +281,6 @@ data/feathered_data/
 data/walkthrough/video/
 data/walkthrough/va_output/
 .neptune*
+*.pt
+*.zip
+*.npy

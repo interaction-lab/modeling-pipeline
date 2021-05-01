@@ -8,6 +8,7 @@ from sklearn.metrics import (
     roc_auc_score,
     plot_confusion_matrix,
     average_precision_score,
+    roc_curve
 )
 
 
@@ -25,97 +26,99 @@ class ModelMetrics:
         summary_stat="macro avg",
         verbose=False,
     ):
-        # Transform the metrics
+        # ***Transform the metrics***
         y_pred_list = [a.squeeze().tolist() for a in preds]
         y_labels = [a.squeeze().tolist() for a in labels]
+
         if type(y_labels[0]) is list:
             y_labels = [[int(a) for a in b] for b in y_labels]
         else:
             y_labels = [int(a) for a in y_labels]
 
         if probs is None:
-            print("substituting probs")
             probs = y_pred_list
         else:
             probs = [a.squeeze().tolist() for a in probs]
-            # probs = probs[0]
-
-        # Calculate all the metrics
-        # https://scikit-learn.org/stable/modules/generated/sklearn.metrics.roc_auc_score.html
-        final_summary = []
-        final_report = {}
+        if self.params["model"] in ["xgb", "tree", "forest"]:
+            probs = y_pred_list
+        
         probs = np.array(probs)
         y_labels = np.array(y_labels)
         y_pred_list = np.array(y_pred_list)
-
-        if self.params["model"] in ["xgb", "tree", "forest"]:
-            probs = y_pred_list
 
         if len(y_labels.shape) == 1:
             probs = np.expand_dims(probs, 1)
             y_labels = np.expand_dims(y_labels, 1)
             y_pred_list = np.expand_dims(y_pred_list, 1)
 
-        for i in range(len(self.params["class_names"])):
-            try:
-                sub_probs = probs[:, i].tolist()
-                sub_y_labels = y_labels[:, i].tolist()
-                sub_y_pred_list = y_pred_list[:, i].tolist()
-            except IndexError as e:
-                print(probs[:5])
-                print(y_labels[:5])
-                print(y_pred_list[:5])
-                raise e
 
-            tn, fp, fn, tp = confusion_matrix(sub_y_labels, sub_y_pred_list).ravel()
+        # ***Calculate all the metrics***
+        final_summary = []
+        final_report = {}
+        for i, class_i in enumerate(self.params["class_names"]):
+            sub_probs = probs[:, i].tolist()
+            sub_y_labels = y_labels[:, i].tolist()
+            sub_y_pred_list = y_pred_list[:, i].tolist()
 
-            try:
-                auROC = roc_auc_score(sub_y_labels, sub_probs, average=None)
-                AvgPrec = average_precision_score(sub_y_labels, sub_probs, average=None)
-            except ValueError as V:
-                print(self.params["class_names"])
-                print("Probs:", probs[:6])
-                print("Labels", y_labels[:6])
-                print("Preds", y_pred_list[:6])
-                print(
-                    f"Label shape {len(sub_y_labels)}, probs shape {len(sub_probs)}, values used"
-                )
-                print(sub_y_labels[:10])
-                print(sub_probs[:10])
-
-                auROC = 0.510101
-                AvgPrec = 0.10101
-                raise V
+            # try: # DEBUGGING
+            #     sub_probs = probs[:, i].tolist()
+            #     sub_y_labels = y_labels[:, i].tolist()
+            #     sub_y_pred_list = y_pred_list[:, i].tolist()
+            # except IndexError as e:
+            #     print(probs[:5])
+            #     print(y_labels[:5])
+            #     print(y_pred_list[:5])
+            #     raise e***
 
             report = classification_report(
                 sub_y_labels,
                 sub_y_pred_list,
                 output_dict=output_dict,
-                # labels=[i for i in range(len(self.params["class_names"]))],
+                # labels=[i for i in range(len(class_i))],
                 labels=[1],
-                target_names=[self.params["class_names"][i]],
+                target_names=[class_i],
             )
+            try:
+                report[class_i]["FPR"], report[class_i]["TPR"], _ = roc_curve(sub_y_labels, sub_probs)
+            except Exception as e:
+                print(len(sub_y_labels),len(sub_probs))
+                print(sub_y_labels[:10])
+                print(sub_probs[:10])
+                raise e
+            report[class_i]["auROC"] = roc_auc_score(sub_y_labels, sub_probs, average=None)
+            report[class_i]["AP"] = average_precision_score(sub_y_labels, sub_probs, average=None)
+            tn, fp, fn, tp = confusion_matrix(sub_y_labels, sub_y_pred_list).ravel()
+
+            report[class_i]["conf-TP"] = tp
+            report[class_i]["conf-TN"] = tn
+            report[class_i]["conf-FP"] = fp
+            report[class_i]["conf-FN"] = fn
+
+            # try: # DEBUGGING
+            #     auROC = roc_auc_score(sub_y_labels, sub_probs, average=None)
+            #     AvgPrec = average_precision_score(sub_y_labels, sub_probs, average=None)
+            # except ValueError as V:
+            #     print(class_i)
+            #     print("Probs:", probs[:6])
+            #     print("Labels", y_labels[:6])
+            #     print("Preds", y_pred_list[:6])
+            #     print(
+            #         f"Label shape {len(sub_y_labels)}, probs shape {len(sub_probs)}, values used"
+            #     )
+            #     print(sub_y_labels[:10])
+            #     print(sub_probs[:10])
+
+            #     auROC = 0.510101
+            #     AvgPrec = 0.10101
+            #     raise V
+
             if verbose:
-                print("\n\n", self.params["class_names"][i])
+                print("\n\n", class_i)
                 print(f"\nlabels: {sub_y_labels[:20]}")
                 print(f"predictions: {sub_y_pred_list[:20]}\n")
                 print(f"TP {tp}  TN {tn}   FP {fp}   FN {fn}")
-                printable = [round(p, 2) for p in sub_probs[:20]]
-                print(f"probs: {printable}")
-                print(f"auROC: {auROC}, AP: {AvgPrec}")
+                print(f"probs: {[round(p, 2) for p in sub_probs[:20]]}")
 
-            try:
-                report[self.params["class_names"][i]]["auROC"] = auROC
-                report[self.params["class_names"][i]]["AP"] = AvgPrec
-
-                report[self.params["class_names"][i]]["conf-TP"] = tp
-                report[self.params["class_names"][i]]["conf-TN"] = tn
-                report[self.params["class_names"][i]]["conf-FP"] = fp
-                report[self.params["class_names"][i]]["conf-FN"] = fn
-
-            except Exception as e:
-                print(report)
-                raise e
             for k, v in report.items():
                 if "avg" not in k:
                     print(k, v)
@@ -144,11 +147,7 @@ class ModelMetrics:
         Returns:
             list, DataFrame: a list of the performance metrics values and a dataframe
         """
-        # if loss:
-        #     columns = ["loss"]
-        #     values = [loss]
-        # else:
-        #     columns, values = [], []
+
         columns = ["loss"]
         values = [loss]
         for k, v in metrics_dict.items():
@@ -272,61 +271,61 @@ class ModelMetrics:
             # experiment.log_image("diagrams", fig)
         return
 
-# def get_all_metrics(turn_labels, probs, preds, verbose, plot):
-#     auROC=roc_auc_score(turn_labels, probs)
-#     AP=average_precision_score(turn_labels, probs)
-#     fpr, tpr, thresholds = roc_curve(turn_labels, probs)
+def get_all_metrics(turn_labels, probs, preds, verbose, plot):
+    auROC=roc_auc_score(turn_labels, probs)
+    AP=average_precision_score(turn_labels, probs)
+    fpr, tpr, thresholds = roc_curve(turn_labels, probs)
 
-#     report = classification_report( turn_labels, preds, labels=[0,1], output_dict=True)
-#     tn, fp, fn, tp = confusion_matrix(turn_labels, preds).ravel()
-#     optimal_idx = np.argmax(tpr - fpr)
-#     optimal_threshold = thresholds[optimal_idx]
+    report = classification_report( turn_labels, preds, labels=[0,1], output_dict=True)
+    tn, fp, fn, tp = confusion_matrix(turn_labels, preds).ravel()
+    optimal_idx = np.argmax(tpr - fpr)
+    optimal_threshold = thresholds[optimal_idx]
 
-#     # Adjusting for optimal threshold
-#     adjust = .5-optimal_threshold
-#     # adjust = optimal_threshold-.5
-#     probs2 = probs + (adjust)
-#     preds2 = probs2.round()#.fillna(0).reset_index(drop=True)
-#     if plot:
-#         fig, ax = plt.subplots(figsize=(20,3))
-#         ax.plot(probs[:2000], 'r')
-#         ax.plot(probs2[:2000], 'g')
-#         plt.show()
-#         fig, ax = plt.subplots(figsize=(20,3))
-#         ax.plot(preds[:2000], 'r')
-#         ax.plot(preds2[:2000], 'g')
-#         plt.show()
+    # Adjusting for optimal threshold
+    adjust = .5-optimal_threshold
+    # adjust = optimal_threshold-.5
+    probs2 = probs + (adjust)
+    preds2 = probs2.round()#.fillna(0).reset_index(drop=True)
+    if plot:
+        fig, ax = plt.subplots(figsize=(20,3))
+        ax.plot(probs[:2000], 'r')
+        ax.plot(probs2[:2000], 'g')
+        plt.show()
+        fig, ax = plt.subplots(figsize=(20,3))
+        ax.plot(preds[:2000], 'r')
+        ax.plot(preds2[:2000], 'g')
+        plt.show()
 
-#     auROC2=roc_auc_score(turn_labels, probs2)
-#     AP2=average_precision_score(turn_labels, probs2)
-#     fpr2, tpr2, thresholds2 = roc_curve(turn_labels, probs2)
+    auROC2=roc_auc_score(turn_labels, probs2)
+    AP2=average_precision_score(turn_labels, probs2)
+    fpr2, tpr2, thresholds2 = roc_curve(turn_labels, probs2)
 
-#     report2 = classification_report( turn_labels, preds2, labels=[0,1], output_dict=True)
-#     tn2, fp2, fn2, tp2 = confusion_matrix(turn_labels, preds2).ravel()
-#     optimal_idx2 = np.argmax(tpr2 - fpr2)
-#     optimal_threshold2 = thresholds2[optimal_idx2]
+    report2 = classification_report( turn_labels, preds2, labels=[0,1], output_dict=True)
+    tn2, fp2, fn2, tp2 = confusion_matrix(turn_labels, preds2).ravel()
+    optimal_idx2 = np.argmax(tpr2 - fpr2)
+    optimal_threshold2 = thresholds2[optimal_idx2]
 
-#     if verbose:
-#         # print(f"\nFor session {session} person {person}:")
-#         print("\nBEFORE")
-#         print(f"auROC={auROC}")
-#         print(f"AP={AP}")
-#         print(f'Acc={report["accuracy"]}')
-#         print(f'F1={report["weighted avg"]["f1-score"]}')
-#         print(f"\n Optimal threshold value is: {optimal_threshold}\n")
-#         for k,v in report.items():
-#             print(k,v)
-#         print(f"tp={tp}, tn={tn}, fp={fp}, fn={fn}")
+    if verbose:
+        # print(f"\nFor session {session} person {person}:")
+        print("\nBEFORE")
+        print(f"auROC={auROC}")
+        print(f"AP={AP}")
+        print(f'Acc={report["accuracy"]}')
+        print(f'F1={report["weighted avg"]["f1-score"]}')
+        print(f"\n Optimal threshold value is: {optimal_threshold}\n")
+        for k,v in report.items():
+            print(k,v)
+        print(f"tp={tp}, tn={tn}, fp={fp}, fn={fn}")
 
-#         print("\nAFTER")
-#         print(f"adjusting by {adjust}")
-#         print(f"auROC={auROC2}")
-#         print(f"AP={AP2}")
-#         print(f'Acc={report2["accuracy"]}')
-#         print(f'F1={report2["weighted avg"]["f1-score"]}')
-#         print(f"\n Optimal threshold value is: {optimal_threshold2}\n")
-#         for k,v in report2.items():
-#             print(k,v)
-#         print(f"tp={tp2}, tn={tn2}, fp={fp2}, fn={fn2}")
+        print("\nAFTER")
+        print(f"adjusting by {adjust}")
+        print(f"auROC={auROC2}")
+        print(f"AP={AP2}")
+        print(f'Acc={report2["accuracy"]}')
+        print(f'F1={report2["weighted avg"]["f1-score"]}')
+        print(f"\n Optimal threshold value is: {optimal_threshold2}\n")
+        for k,v in report2.items():
+            print(k,v)
+        print(f"tp={tp2}, tn={tn2}, fp={fp2}, fn={fn2}")
 
-#     return auROC, AP, report, optimal_threshold, report2
+    return auROC, AP, report, optimal_threshold, report2

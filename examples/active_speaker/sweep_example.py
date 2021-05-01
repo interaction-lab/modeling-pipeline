@@ -16,11 +16,29 @@ from pipeline.modeling.model_training import ModelTraining
 from .custom_dataset import MakeTurnsDataset as MTD
 import argparse
 from itertools import combinations
+from sklearn.metrics import auc, RocCurveDisplay
 
 parser = argparse.ArgumentParser(description='Sweep hyperparams')
 parser.add_argument('-m','--model', help='model to use, defaults to none', required=False, default=None)
 parser.add_argument('-w','--window', help='Description for bar argument', required=False, default=None)
 args = vars(parser.parse_args())
+
+def parse_args(args):
+    if args["model"]:
+        assert args["model"] in available_models, "Model must be among list of available models"
+        args["model"] = [args["model"]]
+    else:
+        args["model"] = [
+            "xgb",
+            "gru",
+            "tcn"
+        ]
+    if args["window"]:
+        args["window"] = int(args["window"])
+        assert args["window"] in available_windows, "window must be among list of available windows"
+    else:
+        args["window"] = available_windows
+    return args
 
 def log_reports(metrics, columns, log_to_neptune, verbose=False):
     # Here is where we can get creative showing what we want
@@ -31,8 +49,7 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
         else:
             df = pd.DataFrame(metrics[k], columns=columns)
         if log_to_neptune:
-            # log_table(k, df)
-            run['metrics/df'] = neptune.types.File.as_html(df)
+            run[f'metrics/{k}/df'] = neptune.types.File.as_html(df)
         else:
             print(k, df)
         metrics_to_log = [
@@ -49,11 +66,16 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
             for m in metrics_to_log:
                 if m in c:
                     if log_to_neptune:
-                        # neptune.send_metric(f"{k}_{c}", df[c].iloc[-1])
                         run[f"metrics/{k}/{c}"].log(df[c].iloc[-1])
-                        # print(f"TO NEPTUNE AND BEYOND {k}_{c}", df[c].iloc[-1])
                     elif verbose:
                         print(f"{k}_{c}", df[c].iloc[-1])
+        for c in ALL_CLASSES:
+            fpr = df[f"{c}-FPR"][0]
+            tpr = df[f"{c}-TPR"][0]
+            print(fpr,tpr)
+            auroc = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=auc(fpr, tpr)).plot()
+            run[f"metrics/diagrams/{k}/{c}/auroc"].log(auroc.figure_)
+            
     if model in ["forest", "tree", "mlp", "knn", "xgb"]:
         df_train = pd.DataFrame([metrics["train"]], columns=columns)
         df_val = pd.DataFrame([metrics["val"]], columns=columns)
@@ -79,21 +101,22 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
         if verbose:
             plt.show()
         if log_to_neptune:
-            run["metrics/diagrams"].log(fig)
+            run["metrics/diagrams/training_curves"].log(fig)
+
     return
 
 def set_model_params(model):
     model_params = {}
     if model in ["xgb"]:
         model_params = {
-            "max_depth": 12,
+            "max_depth": 10,
             "booster":  "dart",
             "window": WINDOW,#trial.suggest_int("window", 1, MAX_HISTORY),
             "learning_rate": .001,
         }
     if model in ["rnn", "gru", "lstm", "tcn"]:
         model_params = {
-            "num_layers": 6,
+            "num_layers": 4,
             "lr": 5e-5,
             "batch_size": 25,
             "window": WINDOW,#trial.suggest_int("window", 3, MAX_HISTORY),
@@ -205,6 +228,7 @@ def save_model(model_name, model):
         torch.save(model.state_dict(), "model.pt")
 
 
+
 @timeit
 def opt_objective(trial):
     model_params = search_model_params(trial, model)
@@ -290,23 +314,11 @@ available_models = [
     "lstm",
     "gru",
 ]  
-
-if args["model"]:
-    assert args["model"] in available_models, "Model must be among list of available models"
-    models_to_try = [args["model"]]
-else:
-    models_to_try = [
-        "xgb",
-        "gru",
-        "tcn"
-    ]
 available_windows = [5,12,25]
-if args["window"]:
-    args["window"] = int(args["window"])
-    assert args["window"] in available_windows, "window must be among list of available windows"
-    WINDOWS = [args["window"]]
-else:
-    WINDOWS = available_windows
+
+args = parse_args(args)
+WINDOWS = [args["window"]]
+models_to_try = args["model"]
 
 SHIFT = 25
 NUM_TRIALS = 5  # Number of trials to search for each model
@@ -328,23 +340,22 @@ NORMALIZE = True  # Normalize entire dataset (- mean & / std dev)
 OPTUNA_SEARCH = False
 LOG_TO_NEPTUNE = True
 
+def create_feature_lists(possible_features):
+    all_possible = []
+    for i in range(1,len(possible_features)+1):
+        comb = combinations(possible_features,i)
+        for i in list(comb): 
+            all_possible.append(list(i))
+    return all_possible
+
 # possible_features = ["at","ang","head","perfectmatch","syncnet"]
-possible_features = ["at","ang","perfectmatch","syncnet"]
-all_possible = []
-for i in range(1,len(possible_features)+1):
-    comb = combinations(possible_features,i)
-    for i in list(comb): 
-        all_possible.append(list(i))
-# all_possible = [["syncnet"], ["ang","syncnet"],["perfectmatch"], ["ang","perfectmatch"]]
-# all_possible = [["syncnet"]]
+feature_combinations = create_feature_lists(["at","ang","perfectmatch","syncnet"])
+testing_subset = [["syncnet"], ["ang","syncnet"],["perfectmatch"], ["ang","perfectmatch"]]
+feature_combinations = testing_subset
 
 for WINDOW in WINDOWS:
-    # if WINDOW==25:
-    #     all_features = all_possible[9:]
-    # else:
-    #     all_features = all_possible
-    # all_features = all_possible
-    for FEATURES in all_possible:
+
+    for FEATURES in feature_combinations:
         # ***********************************************************************************
         # *****************Setup Experimental Details****************************************
         # Load the data here so it is not reloaded in each call to
@@ -358,11 +369,9 @@ for WINDOW in WINDOWS:
         # MTD has two responsibilities - to load the df and return a dataset
         MTD(range(1,20),range(20,28), FDF_PATH, features=FEATURES, shift=SHIFT)
 
-
         # Record experimental details for Neptune
         params = {
             "trials": f"{NUM_TRIALS}",
-            "pruner": "no pruning",  # See optuna.create_study
             "classes": ALL_CLASSES,
             "patience": PATIENCE,
             "weight classes": WEIGHT_CLASSES,
@@ -370,7 +379,8 @@ for WINDOW in WINDOWS:
         }
         tags = [
             COMPUTER,
-            str(WINDOW),
+            'w='+str(WINDOW),
+            's='+str(SHIFT)
         ]
         tags = tags + FEATURES
 
