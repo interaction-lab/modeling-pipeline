@@ -10,8 +10,9 @@ import math
 
 
 class MakeTurnsDataset():
-    def __init__(self, train_sessions, val_sessions, fdf_path, features=["at","ang","head","perfectmatch"]) -> None:
+    def __init__(self, train_sessions, val_sessions, fdf_path, features=["at","ang","head","perfectmatch"], shift=0) -> None:
         self.fdf_path = fdf_path
+        self.shift = shift
 
         df = self.get_df(train_sessions,"chris", features)
         df.to_feather(fdf_path+".train")
@@ -33,9 +34,10 @@ class MakeTurnsDataset():
             if session not in skip:
                 for person in positions:
 
-                    looking_at, speaker_labels, sync, perf, gaze_angles = get_individuals_dataframes(session, person, "pose", "superlarge", dataset)
+                    looking_at, speaker_labels, sync, perf, gaze_angles = get_individuals_dataframes(session, person, "pose", "superlarge", dataset, self.shift)
                     at_multipliers = get_gazed_at_multiplier(person, looking_at)
                     ang_multipliers = get_gaze_angle_multiplier(person, gaze_angles)
+                    
                     
                     sdfs.append(speaker_labels)
                     pcdfs.append(perf)
@@ -117,7 +119,7 @@ def get_gaze_angle_multiplier(person_of_interest, angles_df, lower_bound=1, uppe
     assert angles_df["multiple_ang"].max() <= upper_bound, "Check your math"
     return angles_df[["multiple_ang"]].copy()
     
-def get_individuals_dataframes(session, person, direction_type, size, dataset):
+def get_individuals_dataframes(session, person, direction_type, size, dataset, shift):
     # Note: all csv's have headers so positions should be irrelevant
 
     if dataset=="kalin":
@@ -158,8 +160,8 @@ def get_individuals_dataframes(session, person, direction_type, size, dataset):
         turns = pd.read_csv(f"{base_path}/Annotation-Turns/{session}/turns.csv")
 
         # csv with a single columns labeled "Confidence" and values from syncnet output
-        sconfidences = pd.read_csv(f"{base_path}/syncnet_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv")
-        pconfidences = pd.read_csv(f"{base_path}/perfectmatch_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv")
+        sconfidences = pd.read_csv(f"{base_path}/syncnet_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv",usecols=["Confidence"])
+        pconfidences = pd.read_csv(f"{base_path}/perfectmatch_confidences/pyavi/{session}{person[0]}/framewise_confidences.csv",usecols=["Confidence"])
 
     # Sampled from 30 to 25 fps
     looking_at = looking_at[looking_at.index % 6 != 0].reset_index(drop=True)
@@ -168,6 +170,8 @@ def get_individuals_dataframes(session, person, direction_type, size, dataset):
 
     # Get individual speaker from turns dataframe
     speaker_labels = turns[person].to_frame(name="speaking").reset_index(drop=True)
+    if shift:
+        speaker_labels = speaker_labels.shift(-1 * shift,fill_value=0)
 
     max_len = min(speaker_labels.shape[0], pconfidences.shape[0], sconfidences.shape[0], looking_at.shape[0], gaze_angles.shape[0])
 

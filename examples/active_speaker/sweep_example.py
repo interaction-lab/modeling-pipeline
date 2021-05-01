@@ -246,7 +246,7 @@ def cross_validate(k=9):
 
         val_sessions = sets.pop(i)
         train_sessions = list(flatten(sets))
-        MTD(train_sessions,val_sessions, FDF_PATH, features=FEATURES)
+        MTD(train_sessions,val_sessions, FDF_PATH, features=FEATURES, shift=SHIFT)
         model_params = set_model_params(model)
         dataset = read_dataset()
         dataset.setup_dataset(window=model_params["window"])
@@ -276,7 +276,7 @@ def cross_validate(k=9):
 # well as describing the experiment for tracking in Neptune
 # ********************************************************************************
 # FDF_PATH = "./data/feathered_data/tmp-a.feather"
-EXP_NAME = "cross-validate-asd"
+EXP_NAME = "explore-turns"
 COMPUTER = "laptop"
 
 # Current models ["tree", "forest", "xgb", "gru", "rnn", "lstm", "tcn", "mlp"]
@@ -308,7 +308,7 @@ if args["window"]:
 else:
     WINDOWS = available_windows
 
-
+SHIFT = 25
 NUM_TRIALS = 5  # Number of trials to search for each model
 PATIENCE = 2  # How many bad epochs to run before giving up
 
@@ -336,7 +336,7 @@ for i in range(1,len(possible_features)+1):
     for i in list(comb): 
         all_possible.append(list(i))
 # all_possible = [["syncnet"], ["ang","syncnet"],["perfectmatch"], ["ang","perfectmatch"]]
-# all_possible = [["ang","syncnet"]]
+# all_possible = [["syncnet"]]
 
 for WINDOW in WINDOWS:
     # if WINDOW==25:
@@ -356,7 +356,7 @@ for WINDOW in WINDOWS:
         FDF_PATH = f"./data/feathered_data/tmp-{WINDOW}-{'-'.join(FEATURES)}.feather"
 
         # MTD has two responsibilities - to load the df and return a dataset
-        MTD(range(1,20),range(20,28), FDF_PATH, features=FEATURES)
+        MTD(range(1,20),range(20,28), FDF_PATH, features=FEATURES, shift=SHIFT)
 
 
         # Record experimental details for Neptune
@@ -366,6 +366,7 @@ for WINDOW in WINDOWS:
             "classes": ALL_CLASSES,
             "patience": PATIENCE,
             "weight classes": WEIGHT_CLASSES,
+            "label_shift": SHIFT,
         }
         tags = [
             COMPUTER,
