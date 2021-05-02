@@ -280,7 +280,7 @@ class ModelTraining:
 
         ### Calculate all metrics of interest
         report, summary_stat = self.mm.calculate_metrics(
-            np.vstack(labels), np.vstack(predictions), np.vstack(probs)
+            np.vstack(labels), np.vstack(predictions), probs=np.vstack(probs),dataset=self.dataset.status
         )
 
         m_list, self.metrics_names = self.mm.listify_metrics(report, avg_loss)
@@ -392,7 +392,7 @@ class ModelTraining:
         Y_pred = self.model.predict(X_set)
         Y_prob = self.model.predict_proba(X_set)
         metrics_dict, m_summary = self.mm.calculate_metrics(
-            Y_set, Y_pred, probs=Y_prob, output_dict=True
+            Y_set, Y_pred, probs=Y_prob,dataset=self.dataset.status
         )
         m_list, self.metrics_names = self.mm.listify_metrics(metrics_dict)
         return m_list, m_summary

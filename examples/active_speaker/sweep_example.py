@@ -17,6 +17,8 @@ from .custom_dataset import MakeTurnsDataset as MTD
 import argparse
 from itertools import combinations
 from sklearn.metrics import auc, RocCurveDisplay
+from neptune.new.types import File
+
 
 parser = argparse.ArgumentParser(description='Sweep hyperparams')
 parser.add_argument('-m','--model', help='model to use, defaults to none', required=False, default=None)
@@ -72,7 +74,6 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
         for c in ALL_CLASSES:
             fpr = df[f"{c}-FPR"][0]
             tpr = df[f"{c}-TPR"][0]
-            print(fpr,tpr)
             auroc = RocCurveDisplay(fpr=fpr, tpr=tpr, roc_auc=auc(fpr, tpr)).plot()
             run[f"metrics/diagrams/{k}/{c}/auroc"].log(auroc.figure_)
             
@@ -102,6 +103,9 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
             plt.show()
         if log_to_neptune:
             run["metrics/diagrams/training_curves"].log(fig)
+            run[f"metrics/diagrams/train/model_output"].log(File(f"./tmp/training-performance.png"))
+            run[f"metrics/diagrams/test/model_output"].log(File(f"./tmp/testing-performance.png"))
+            run[f"metrics/diagrams/val/model_output"].log(File(f"./tmp/validation-performance.png"))
 
     return
 
@@ -286,7 +290,13 @@ def cross_validate(k=9):
         log_reports(trainer.metrics, trainer.metrics_names, LOG_TO_NEPTUNE)
 
         if LOG_TO_NEPTUNE:
-            run["metrics/dataset_shape"].log(dataset.train_df.shape[0])
+            run["metrics/dataset_stats/train_len"].log(dataset.train_df.shape[0])
+            run["metrics/dataset_stats/val_len"].log(dataset.val_df.shape[0])
+            run["metrics/dataset_stats/test_len"].log(dataset.test_df.shape[0])
+
+            run["metrics/dataset_stats/train_perc_pos"].log(dataset.train_perc)
+            run["metrics/dataset_stats/val_perc_pos"].log(dataset.val_perc)
+            run["metrics/dataset_stats/test_perc_pos"].log(dataset.test_perc)
             run["model_params"] = model_params
 
             run[f'model_checkpoints/{i}-model-{summary_metric:.03f}.pt'].upload('model.pt')

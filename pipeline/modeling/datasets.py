@@ -146,17 +146,19 @@ class TimeSeriesDataset(Dataset):
 
             perc = self.train_labels[c].sum() / len(self.train_labels)
 
-            train_perc = self.train_labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
-            val_perc = self.val_labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
-            test_perc = self.test_labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
+            self.train_perc = self.train_labels[c].iloc[self.train_ind].sum() / len(self.train_ind)
+            self.val_perc = self.val_labels[c].iloc[self.val_ind].sum() / len(self.val_ind)
+            self.test_perc = self.test_labels[c].iloc[self.test_ind].sum() / len(self.test_ind)
 
             # We only use training class balance for determining weights
-            self.weights.append(0.5 / train_perc)
+            # We want the balance to be 50% so if we have 25% pos examples, the weight should 
+            # be 2x on the positive class (.5/.25=2)
+            self.weights.append(0.5 / self.train_perc)
             
             print(f"Dataset balance for {c}: {100*perc:.01f}% of {len(self.train_labels)}")
-            print(f"Train: {100*train_perc:.01f}% of {len(self.train_ind)}, ", end="")
-            print(f"Val: {100*val_perc:.01f}% of {len(self.val_ind)}, ", end="")
-            print(f"Test: {100*test_perc:.01f}% of {len(self.test_ind)}")
+            print(f"Train: {100*self.train_perc:.01f}% of {len(self.train_ind)}, ", end="")
+            print(f"Val: {100*self.val_perc:.01f}% of {len(self.val_ind)}, ", end="")
+            print(f"Test: {100*self.test_perc:.01f}% of {len(self.test_ind)}")
         print("Wights are: ", self.weights)
 
     def trans_to_sk_dataset(self, feather_dir="./data/feathered_data"):

@@ -22,6 +22,7 @@ class ModelMetrics:
         labels,
         preds,
         probs=None,
+        dataset="",
         output_dict=True,
         summary_stat="macro avg",
         verbose=False,
@@ -94,6 +95,7 @@ class ModelMetrics:
             report[class_i]["conf-FP"] = fp
             report[class_i]["conf-FN"] = fn
 
+
             # try: # DEBUGGING
             #     auROC = roc_auc_score(sub_y_labels, sub_probs, average=None)
             #     AvgPrec = average_precision_score(sub_y_labels, sub_probs, average=None)
@@ -128,10 +130,9 @@ class ModelMetrics:
         print(f"F1 by class {final_summary}")
         final_stat = sum(final_summary) / len(final_summary)
         print(f"Avg F1: {final_stat}")
-        if verbose:
-            self.graph_model_output(
-                y_labels, y_pred_list, probabilities=probs, title="title"
-            )
+        self.graph_model_output(
+            y_labels, y_pred_list, probabilities=probs, title=dataset
+        )
         return final_report, final_stat
 
     def listify_metrics(self, metrics_dict, loss=0):
@@ -166,6 +167,7 @@ class ModelMetrics:
         probabilities=None,
         max_graph_size=1000,
         title="Graph Title",
+        show=False
     ):
         print("Graphing model output")
         # TODO: Add saving of outputs
@@ -196,8 +198,10 @@ class ModelMetrics:
                     )
 
                 plt.legend()
-                plt.set_title(title)
-                plt.show()
+                # plt.set_title(title)
+                if show:
+                    plt.show()
+                plt.savefig(f"tmp/{title}-performance.png")
         else:
             plt.figure(figsize=(30, 5))
             plt.plot(actual_labels, color="green", label="original")
@@ -208,7 +212,9 @@ class ModelMetrics:
                 plt.plot(probabilities, color="yellow", label="probability")
 
             plt.legend()
-            plt.show()
+            if show:
+                plt.show()
+            plt.savefig(f"tmp/{title}-performance.png")
 
     def plot_metrics(self, metrics, metrics_names, verbose=False):
         for k in ["train", "val", "test"]:
