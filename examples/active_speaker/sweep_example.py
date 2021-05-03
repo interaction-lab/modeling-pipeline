@@ -36,7 +36,7 @@ def parse_args(args):
             "tcn"
         ]
     if args["window"]:
-        args["window"] = int(args["window"])
+        args["window"] = [int(args["window"])]
         assert args["window"] in available_windows, "window must be among list of available windows"
     else:
         args["window"] = available_windows
@@ -103,9 +103,9 @@ def log_reports(metrics, columns, log_to_neptune, verbose=False):
             plt.show()
         if log_to_neptune:
             run["metrics/diagrams/training_curves"].log(fig)
-            run[f"metrics/diagrams/train/model_output"].log(File(f"./tmp/training-performance.png"))
-            run[f"metrics/diagrams/test/model_output"].log(File(f"./tmp/testing-performance.png"))
-            run[f"metrics/diagrams/val/model_output"].log(File(f"./tmp/validation-performance.png"))
+            # run[f"metrics/diagrams/train/model_output"].log(File(f"./tmp/training-performance.png"))
+            # run[f"metrics/diagrams/test/model_output"].log(File(f"./tmp/testing-performance.png"))
+            # run[f"metrics/diagrams/val/model_output"].log(File(f"./tmp/validation-performance.png"))
 
     return
 
@@ -327,7 +327,7 @@ available_models = [
 available_windows = [5,12,25]
 
 args = parse_args(args)
-WINDOWS = [args["window"]]
+WINDOWS = args["window"]
 models_to_try = args["model"]
 
 SHIFT = 25

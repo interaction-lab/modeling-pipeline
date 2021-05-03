@@ -130,9 +130,9 @@ class ModelMetrics:
         print(f"F1 by class {final_summary}")
         final_stat = sum(final_summary) / len(final_summary)
         print(f"Avg F1: {final_stat}")
-        self.graph_model_output(
-            y_labels, y_pred_list, probabilities=probs, title=dataset
-        )
+        # self.graph_model_output(
+        #     y_labels, y_pred_list, probabilities=probs, title=dataset
+        # )
         return final_report, final_stat
 
     def listify_metrics(self, metrics_dict, loss=0):
