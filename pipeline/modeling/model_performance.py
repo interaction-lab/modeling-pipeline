@@ -170,7 +170,6 @@ class ModelMetrics:
         show=False
     ):
         print("Graphing model output")
-        # TODO: Add saving of outputs
         assert (
             actual_labels is not None and predicted_labels is not None
         ), "Invalid inputs to graph model, must not be none!"

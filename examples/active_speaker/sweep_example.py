@@ -360,7 +360,7 @@ def create_feature_lists(possible_features):
 
 # possible_features = ["at","ang","head","perfectmatch","syncnet"]
 feature_combinations = create_feature_lists(["at","ang","perfectmatch","syncnet"])
-testing_subset = [["syncnet"], ["ang","syncnet"],["perfectmatch"], ["ang","perfectmatch"]]
+testing_subset = [["syncnet"], ["ang","syncnet"], ["at","syncnet"],["perfectmatch"], ["ang","perfectmatch"], ["at","perfectmatch"]]
 feature_combinations = testing_subset
 
 for WINDOW in WINDOWS:
@@ -426,8 +426,8 @@ for WINDOW in WINDOWS:
                     run["optuna/param_importance"].upload(importance)
                     run.stop()
 
-                tags.remove(model)
             else:
                 cross_validate()
                 if LOG_TO_NEPTUNE:
                     run.stop()
+            tags.remove(model)
